@@ -721,7 +721,7 @@
           <div class="mt-2 text-end">
             <small class="text-muted">
               <span id="total-rqas">0</span> RQAs no total | 
-              <span id="sync-status" class="badge bg-success sync-badge">Sincronizado</span>
+              <span id="sync-status" class="badge bg-success sync-badge">salvo na nuvem</span>
             </small>
           </div>
         </div>
@@ -860,6 +860,32 @@ Ver e Agir
                   <span class="badge bg-light text-dark" id="sec-total">0 registros</span>
                 </div>
                 <div class="card-body p-0">
+                  <div class="p-2 border-bottom bg-light">
+                    <div class="row g-2">
+                      <div class="col-12 col-md-4">
+                        <input id="sec-filtro-busca" class="form-control form-control-sm" placeholder="Filtrar por título, descrição, colaborador, matrícula...">
+                      </div>
+                      <div class="col-6 col-md-2">
+                        <select id="sec-filtro-status" class="form-select form-select-sm">
+                          <option value="">Todos status</option>
+                          <option value="Aberto">Aberto</option>
+                          <option value="Tratado">Tratado</option>
+                          <option value="Enviado">Enviado</option>
+                        </select>
+                      </div>
+                      <div class="col-6 col-md-2">
+                        <input id="sec-filtro-local" class="form-control form-control-sm" placeholder="Local">
+                      </div>
+                      <div class="col-6 col-md-2">
+                        <input id="sec-filtro-sistema" class="form-control form-control-sm" placeholder="Sistema">
+                      </div>
+                      <div class="col-6 col-md-2 d-grid">
+                        <button id="sec-filtro-limpar" class="btn btn-sm btn-outline-secondary">
+                          <i class="fa-solid fa-filter-circle-xmark me-1"></i>Limpar filtros
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   <div class="table-responsive">
                     <table class="table table-hover table-sm mb-0 secretaria-table">
                       <thead>
@@ -1192,6 +1218,39 @@ function parseDateBR(br){
     const [d,m,y]=(br||'').split('/'); 
     return new Date(+y,(+m||1)-1,+d||1); 
 }
+function normalizeAnyDateToBR(v){
+    if(!v) return '';
+    let s = String(v).trim();
+    if(!s) return '';
+    const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(m1) return `${m1[3]}/${m1[2]}/${m1[1]}`;
+    const m2 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if(m2) return s;
+    const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if(m3){
+        const dd = String(m3[1]).padStart(2,'0');
+        const mm = String(m3[2]).padStart(2,'0');
+        const yy = String(m3[3]).length===2 ? ('20'+m3[3]) : String(m3[3]);
+        return `${dd}/${mm}/${yy}`;
+    }
+    const m4 = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s].*$/);
+    if(m4) return `${m4[3]}/${m4[2]}/${m4[1]}`;
+    return s;
+}
+function secDateToSortValue(v){
+    const br = normalizeAnyDateToBR(v);
+    const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : br;
+}
+function secText(v){
+    return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function setSyncBadge(text, type='secondary'){
+    const badge = el('sync-status');
+    if(!badge) return;
+    badge.className = 'badge bg-' + type + ' sync-badge';
+    badge.textContent = text;
+}
 
 // ===== ESTADO =====
 let rqas=[]; 
@@ -1224,11 +1283,19 @@ let cloudSyncInProgress = false;
 let cloudUnsubRqas = null;
 let cloudUnsubSecretaria = null;
 
-function updateCloudStatus(text, type='secondary'){ const badge = el('cloud-status'); if(!badge) return; badge.className = 'badge bg-' + type; badge.textContent = text; }
+function updateCloudStatus(text, type='secondary'){ 
+  const badge = el('cloud-status'); 
+  if(badge){ 
+    badge.className = 'badge bg-' + type; 
+    badge.textContent = text; 
+  }
+  const map = { secondary:'salvo local', warning:'sincronizando', success:'salvo na nuvem', danger:'erro na nuvem' };
+  setSyncBadge(map[type] || text, type);
+}
 function safeCloudId(prefix, value){ const raw = String(value == null ? (Date.now() + '-' + Math.random().toString(36).slice(2,8)) : value); return prefix + '_' + raw.replace(/[^a-zA-Z0-9_-]/g, '_'); }
 function clonePlain(obj){ return JSON.parse(JSON.stringify(obj || {})); }
 function normalizeRqaItem(r, fallbackIndex=0){ return { id: (typeof r.id === 'number' || typeof r.id === 'string') ? r.id : (Date.now() + fallbackIndex), abordagem: r.abordagem || '', data: r.data || todayISO(), colaborador: r.colaborador || '', matricula: r.matricula || '', titulo: r.titulo || 'RQA sem título', local: r.local || '', gerencia: r.gerencia || '', sistema: r.sistema || '', equipamento: r.equipamento || '', categoria: r.categoria || 'PIT-STOP', prioridade: r.prioridade || 'Média', descricao: r.descricao || '', fotos: Array.isArray(r.fotos) ? r.fotos : [], status: r.status || 'Aberto' }; }
-function normalizeSecItem(r, fallbackIndex=0){ return { id: r.id || ('SEC-' + Date.now() + '-' + fallbackIndex), abordagem: r.abordagem || 'Secretaria', data: r.data || todayISO(), colaborador: r.colaborador || '', matricula: r.matricula || '', titulo: r.titulo || 'RQA Secretaria', local: r.local || '', gerencia: r.gerencia || '', sistema: r.sistema || '', equipamento: r.equipamento || '', categoria: r.categoria || 'PIT-STOP', prioridade: r.prioridade || 'Média', descricao: r.descricao || '', fotos: Array.isArray(r.fotos) ? r.fotos : [], status: r.status || 'Aberto', fonte: r.fonte || 'Secretaria' }; }
+function normalizeSecItem(r, fallbackIndex=0){ return { id: r.id || ('SEC-' + Date.now() + '-' + fallbackIndex), abordagem: r.abordagem || 'Secretaria', data: normalizeAnyDateToBR(r.data || todayISO()), colaborador: r.colaborador || '', matricula: r.matricula || '', titulo: r.titulo || 'RQA Secretaria', local: r.local || '', gerencia: r.gerencia || '', sistema: r.sistema || '', equipamento: r.equipamento || '', categoria: r.categoria || 'PIT-STOP', prioridade: r.prioridade || 'Média', descricao: r.descricao || '', fotos: Array.isArray(r.fotos) ? r.fotos : [], status: r.status || 'Aberto', fonte: r.fonte || 'Secretaria' }; }
 function prepareForCloud(item, type='rqa'){ const data = clonePlain(item); data.updatedAt = firebase?.firestore?.FieldValue?.serverTimestamp ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(); data.updatedAtIso = new Date().toISOString(); data.cloudType = type; const json = JSON.stringify(data); if(json.length > 700000){ data.fotos = []; data.fotosCloudOmitted = true; } return data; }
 function mergeById(localArr, cloudArr, normalizer){ const map = new Map(); (localArr || []).forEach((item, idx) => { const n = normalizer(item, idx); map.set(String(n.id), n); }); (cloudArr || []).forEach((item, idx) => { const n = normalizer(item, idx); map.set(String(n.id), { ...(map.get(String(n.id)) || {}), ...n }); }); return Array.from(map.values()); }
 async function initFirebaseCloud(){ try{ if(firebaseReady && firebaseDb) return true; if(!(window.firebase && firebase.apps)){ updateCloudStatus('SDK Firebase não carregado', 'danger'); return false; } if(!firebase.apps.length){ firebase.initializeApp(FIREBASE_CONFIG); } firebaseDb = firebase.firestore(); firebaseReady = true; updateCloudStatus('Firebase conectado', 'success'); return true; }catch(err){ console.error('Falha ao iniciar Firebase:', err); updateCloudStatus('Falha ao conectar Firebase', 'danger'); return false; } }
@@ -1292,7 +1359,7 @@ function persist() {
             rqas: rqas.map(r => ({
                 id: typeof r.id === 'number' ? r.id : (Date.now() + Math.floor(Math.random() * 1000)),
                 abordagem: r.abordagem || '',
-                data: r.data || todayISO(),
+                data: normalizeAnyDateToBR(r.data || todayISO()),
                 colaborador: r.colaborador || '',
                 matricula: r.matricula || '',
                 titulo: r.titulo || '',
@@ -1418,7 +1485,7 @@ function loadSecretaria() {
         const data = localStorage.getItem(STORAGE_KEY_SECRETARIA);
         if (data) {
             const parsed = JSON.parse(data);
-            SEC_DB = Array.isArray(parsed) ? parsed : (parsed.secDb || []);
+            SEC_DB = (Array.isArray(parsed) ? parsed : (parsed.secDb || [])).map((r, index) => normalizeSecItem(r, index));
             
             console.log('Secretaria carregada:', SEC_DB.length);
         } else {
@@ -2135,24 +2202,45 @@ async function sendToSAP(){
 }
 
 // ===== SECRETARIA =====
+function getFilteredSecretaria(){
+  const busca = secText(el('sec-filtro-busca')?.value || '');
+  const status = (el('sec-filtro-status')?.value || '').trim();
+  const local = secText(el('sec-filtro-local')?.value || '');
+  const sistema = secText(el('sec-filtro-sistema')?.value || '');
+  return [...SEC_DB]
+    .map((r, idx) => normalizeSecItem(r, idx))
+    .filter(r => {
+      if(status && (r.status || '') !== status) return false;
+      if(local && !secText(r.local).includes(local)) return false;
+      if(sistema && !secText(r.sistema).includes(sistema)) return false;
+      if(busca){
+        const hay = secText([r.titulo, r.descricao, r.colaborador, r.matricula, r.equipamento, r.sistema, r.local, r.gerencia, r.categoria].join(' '));
+        if(!hay.includes(busca)) return false;
+      }
+      return true;
+    })
+    .sort((a,b) => secDateToSortValue(b.data).localeCompare(secDateToSortValue(a.data)) || String(b.id).localeCompare(String(a.id)));
+}
 function addSecRecords(list){
-  for(const r of list){
+  let added = 0;
+  for(const raw of list){
+    const r = normalizeSecItem(raw);
     if (!r.id) {
       r.id = 'SEC-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
     }
-    if (!r.status) r.status = 'Aberto';
-    if (!r.fotos) r.fotos = [];
-    if (!r.abordagem) r.abordagem = r.abordagem || 'Secretaria';
-    
-    const existe = SEC_DB.find(item => item.id === r.id || 
-      (item.matricula === r.matricula && item.data === r.data && item.titulo === r.titulo));
-    
+    const existe = SEC_DB.find(item => String(item.id) === String(r.id) || 
+      (String(item.matricula||'') === String(r.matricula||'') && normalizeAnyDateToBR(item.data) === normalizeAnyDateToBR(r.data) && String(item.titulo||'') === String(r.titulo||'')));
     if (!existe) {
       SEC_DB.push(r);
+      added++;
     }
   }
   persistSecretaria();
   renderSecretariaTabela();
+  if(added){
+    updateCloudStatus('Secretaria salva e sincronizando...', 'warning');
+    setTimeout(() => { if(firebaseReady) pushAllLocalToCloud({ force:true }).catch(()=>{}); }, 300);
+  }
 }
 
 function deleteSecRecords(ids){
@@ -2405,20 +2493,27 @@ const analyzer = new SecretariaAnalyzer();
 function renderSecretariaTabela(){
   const tbody = el('sec-tabela');
   tbody.innerHTML = '';
+  const lista = getFilteredSecretaria();
   if(SEC_DB.length===0){
     tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Nenhum registro ainda.</td></tr>';
     el('sec-total').textContent = '0 registros';
-    updateSecStats();
+    updateSecStats([]);
     return;
   }
-  el('sec-total').textContent = SEC_DB.length + ' registros';
+  el('sec-total').textContent = `${lista.length} / ${SEC_DB.length} registros`;
 
-  for(const r of SEC_DB){
+  if(!lista.length){
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Nenhum registro encontrado com os filtros atuais.</td></tr>';
+    updateSecStats([]);
+    return;
+  }
+
+  for(const r of lista){
     const tr = document.createElement('tr');
     const descShort = (r.descricao||'').slice(0,60) + ((r.descricao||'').length > 60 ? '...' : '');
     tr.innerHTML = `
       <td><input type="checkbox" class="form-check-input sec-sel" data-id="${r.id}"></td>
-      <td>${r.data || ''}</td>
+      <td>${normalizeAnyDateToBR(r.data) || ''}</td>
       <td>${r.titulo||''}</td>
       <td>${r.local||''}</td>
       <td>${r.sistema||''}</td>
@@ -2437,14 +2532,15 @@ function renderSecretariaTabela(){
     tbody.appendChild(tr);
   }
 
-  updateSecStats();
+  updateSecStats(lista);
 }
 
-function updateSecStats(){
-  const total = SEC_DB.length;
-  const ab = SEC_DB.filter(r=>r.status==='Aberto').length;
-  const tr = SEC_DB.filter(r=>r.status==='Tratado').length;
-  const env = SEC_DB.filter(r=>r.status==='Enviado').length;
+function updateSecStats(baseList){
+  const arr = Array.isArray(baseList) ? baseList : getFilteredSecretaria();
+  const total = arr.length;
+  const ab = arr.filter(r=>r.status==='Aberto').length;
+  const tr = arr.filter(r=>r.status==='Tratado').length;
+  const env = arr.filter(r=>r.status==='Enviado').length;
 
   el('sec-stat-total').textContent = total;
   el('sec-stat-aberto').textContent = ab;
@@ -2472,11 +2568,12 @@ function updateSecStats(){
   });
 
   const countsByDate = {};
-  SEC_DB.forEach(r=>{
-    if(!r.data) return;
-    countsByDate[r.data] = (countsByDate[r.data]||0)+1;
+  arr.forEach(r=>{
+    const dt = normalizeAnyDateToBR(r.data);
+    if(!dt) return;
+    countsByDate[dt] = (countsByDate[dt]||0)+1;
   });
-  const dates = Object.keys(countsByDate).sort();
+  const dates = Object.keys(countsByDate).sort((a,b)=>secDateToSortValue(a).localeCompare(secDateToSortValue(b)));
   const vals = dates.map(d=>countsByDate[d]);
   const ctx2 = el('sec-chart-timeline').getContext('2d');
   if(secCharts.timeline) secCharts.timeline.destroy();
@@ -2505,7 +2602,7 @@ function updateSecStats(){
   });
 
   const bySys = {};
-  SEC_DB.forEach(r=>{
+  arr.forEach(r=>{
     const s = r.sistema || 'Outros';
     bySys[s] = (bySys[s]||0)+1;
   });
@@ -2711,7 +2808,17 @@ function bindEvents(){
 
   // Secretaria Avançada
   el('sec-refresh').addEventListener('click', renderSecretariaTabela);
+  ['sec-filtro-busca','sec-filtro-status','sec-filtro-local','sec-filtro-sistema'].forEach(id=>{
+    const node = el(id);
+    if(node) node.addEventListener('input', renderSecretariaTabela);
+    if(node) node.addEventListener('change', renderSecretariaTabela);
+  });
+  el('sec-filtro-limpar').addEventListener('click', ()=>{
+    ['sec-filtro-busca','sec-filtro-status','sec-filtro-local','sec-filtro-sistema'].forEach(id=>{ if(el(id)) el(id).value=''; });
+    renderSecretariaTabela();
+  });
   el('sec-sync').addEventListener('click', () => {
+    updateCloudStatus('Sincronizando manualmente...', 'warning');
     showToast('Sincronizando todas as bases de dados...');
     syncAllData();
     listar();
@@ -2729,7 +2836,7 @@ function bindEvents(){
     const txt = el('sec-texto').value.trim();
     if(!txt){ alert('Cole algum texto primeiro.'); return; }
     
-    const regs = analyzer.analyze(txt);
+    const regs = analyzer.analyze(txt).map((r, idx) => normalizeSecItem(r, idx));
     const cont = el('sec-resultado-lista');
     cont.innerHTML='';
     el('sec-resultado').style.display='block';
@@ -2764,7 +2871,7 @@ function bindEvents(){
           <span class="badge bg-light text-dark">${r.status||'Aberto'}</span>
         </div>
         <div class="mt-1 small">
-          <div>📅 Data: ${r.data||'(não encontrada)'} 
+          <div>📅 Data: ${normalizeAnyDateToBR(r.data)||'(não encontrada)'} 
             <span class="badge-conf ${confCls(confData)}">${confLabel(confData)}</span>
           </div>
           <div>👤 Colaborador: ${r.colaborador||'(não encontrado)'} | 🆔 Matrícula: ${r.matricula||'(não encontrada)'}
@@ -2823,7 +2930,7 @@ function bindEvents(){
       const novoRegistro = { 
         id: Date.now() + Math.floor(Math.random() * 1000),
         abordagem: rec.abordagem || 'Secretaria',
-        data: rec.data || todayISO(),
+        data: normalizeAnyDateToBR(rec.data || todayISO()),
         colaborador: rec.colaborador || '',
         matricula: rec.matricula || '',
         titulo: rec.titulo || 'RQA Importada',
