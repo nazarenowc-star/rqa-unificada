@@ -1188,23 +1188,25 @@ const STORAGE_KEY_SECRETARIA = 'rqa_samarco_secretaria_v36_integrado';
 const STORAGE_KEY_CONFIG = 'rqa_samarco_config_v36';
 const FIREBASE_COLLECTION_RQAS = 'rqa_registros';
 const FIREBASE_COLLECTION_SECRETARIA = 'rqa_secretaria';
-const FIREBASE_CONFIG_B64 = "eyJhcGlLZXkiOiAiQUl6YVN5Q0N1eGs5eW1PSHphU0ltWlRrcjVLZXhWNjRrU3Q5MXBZIiwgImF1dGhEb21haW4iOiAicnFhLXVuaWZpY2FkYS5maXJlYmFzZWFwcC5jb20iLCAicHJvamVjdElkIjogInJxYS11bmlmaWNhZGEiLCAic3RvcmFnZUJ1Y2tldCI6ICJycWEtdW5pZmljYWRhLmZpcmViYXNlc3RvcmFnZS5hcHAiLCAibWVzc2FnaW5nU2VuZGVySWQiOiAiNzIxNDA0MDk3NTM3IiwgImFwcElkIjogIjE6NzIxNDA0MDk3NTM3OndlYjozNjI5M2UyYmE4OTY2YTVkMWRiYzAwIn0=";
-const FIREBASE_CONFIG_FALLBACK = {
+const FIREBASE_CONFIG = Object.freeze({
   apiKey: "AIzaSyCCuxk9ymOHzaSImZTkr5KexV64kSt91pY",
   authDomain: "rqa-unificada.firebaseapp.com",
   projectId: "rqa-unificada",
   storageBucket: "rqa-unificada.firebasestorage.app",
   messagingSenderId: "721404097537",
   appId: "1:721404097537:web:36293e2ba8966a5d1dbc00"
-};
+});
+const FIREBASE_CONFIG_PARTS = [];
 function getFirebaseConfig(){
+  if(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey) return FIREBASE_CONFIG;
   try{
-    const parsed = JSON.parse(atob(FIREBASE_CONFIG_B64));
-    if(parsed && parsed.projectId) return parsed;
+    const joined = (FIREBASE_CONFIG_PARTS||[]).join('');
+    if(!joined) throw new Error('Config Firebase vazia');
+    return JSON.parse(atob(joined));
   }catch(err){
-    console.warn('Falha ao reconstruir configuração Firebase, usando fallback local:', err);
+    console.warn('Falha ao reconstruir configuração Firebase, usando modo local:', err);
+    return null;
   }
-  return { ...FIREBASE_CONFIG_FALLBACK };
 }
 let firebaseDb = null;
 let firebaseReady = false;
@@ -1375,14 +1377,20 @@ function mergeUniqueRecords(baseList, incomingList, origem='Lista'){
 
 async function initFirebase(){
   try{
-    if(!window.firebase) return;
+    if(!(window.firebase && firebase.apps)){
+      updateSyncBadge('SDK Firebase ausente', 'warning');
+      return;
+    }
     const firebaseConfig = getFirebaseConfig();
-    if(!firebaseConfig) return;
+    if(!firebaseConfig){
+      updateSyncBadge('Config Firebase inválida', 'danger');
+      return;
+    }
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     firebaseDb = firebase.firestore();
     firebaseReady = true;
     updateSyncBadge('Firebase conectado', 'info');
-    console.log('Firebase conectado');
+    console.log('Firebase conectado', firebaseConfig.projectId);
   }catch(err){
     console.warn('Firebase indisponível:', err);
     firebaseReady = false;
@@ -1461,6 +1469,17 @@ async function loadFirebaseData(){
   } finally {
     firebaseLoading = false;
   }
+}
+
+async function testFirebaseWrite(){
+  if(!firebaseReady || !firebaseDb) throw new Error('Firebase não inicializado');
+  const probe = {
+    type: 'probe',
+    updatedAt: new Date().toISOString(),
+    source: 'rqa_v36_upgrade'
+  };
+  await firebaseDb.collection(FIREBASE_COLLECTION_RQAS).doc('__probe__').set(probe, { merge:true });
+  return true;
 }
 function bindFirebaseRealtime(){
   if(!firebaseReady || !firebaseDb || firebaseListenersBound) return;
@@ -2787,7 +2806,7 @@ function secretariaBind(){
     else if(secTimer){ clearInterval(secTimer); secTimer=null; }
   });
   if(sw.checked) secTimer=setInterval(secretariaFetch, 30000);
-  el('btn-test-get').addEventListener('click', async ()=>{ await initFirebase(); await loadFirebaseData(); bindFirebaseRealtime(); secretariaFetch(); });
+  el('btn-test-get').addEventListener('click', secretariaFetch);
 }
 
 // ===== BACKUP E LIMPEZA =====
