@@ -1188,18 +1188,23 @@ const STORAGE_KEY_SECRETARIA = 'rqa_samarco_secretaria_v36_integrado';
 const STORAGE_KEY_CONFIG = 'rqa_samarco_config_v36';
 const FIREBASE_COLLECTION_RQAS = 'rqa_registros';
 const FIREBASE_COLLECTION_SECRETARIA = 'rqa_secretaria';
-const FIREBASE_CONFIG_PARTS = [
-  "eyJhcGlLZXkiOiAiQUl6YVN5Q0N1eGs5eW1PSHphU0ltWlRrcjVLZXhWNjRrU3Q5MXBZIiwgImF1dGhEb21haW4iOiAicnFhLXVuaWZpY2FkYS5maXJlYmFzZWFwcC5jb20iLA==",
-  "ICJwcm9qZWN0SWQiOiAicnFhLXVuaWZpY2FkYSIsICJzdG9yYWdlQnVja2V0IjogInJxYS11bmlmaWNhZGEuZmlyZWJhc2VzdG9yYWdlLmFwcCIsICJtZXNzYWdpbmdTZW5kZXJJZCI6ICI3MjE0MDQwOTc1MzciLA==",
-  "ICJhcHBJZCI6ICIxOjcyMTQwNDA5NzUzNzp3ZWI6MzYyOTNlMmJhODk2NmE1ZDFkYmMwMCJ9"
-];
+const FIREBASE_CONFIG_B64 = "eyJhcGlLZXkiOiAiQUl6YVN5Q0N1eGs5eW1PSHphU0ltWlRrcjVLZXhWNjRrU3Q5MXBZIiwgImF1dGhEb21haW4iOiAicnFhLXVuaWZpY2FkYS5maXJlYmFzZWFwcC5jb20iLCAicHJvamVjdElkIjogInJxYS11bmlmaWNhZGEiLCAic3RvcmFnZUJ1Y2tldCI6ICJycWEtdW5pZmljYWRhLmZpcmViYXNlc3RvcmFnZS5hcHAiLCAibWVzc2FnaW5nU2VuZGVySWQiOiAiNzIxNDA0MDk3NTM3IiwgImFwcElkIjogIjE6NzIxNDA0MDk3NTM3OndlYjozNjI5M2UyYmE4OTY2YTVkMWRiYzAwIn0=";
+const FIREBASE_CONFIG_FALLBACK = {
+  apiKey: "AIzaSyCCuxk9ymOHzaSImZTkr5KexV64kSt91pY",
+  authDomain: "rqa-unificada.firebaseapp.com",
+  projectId: "rqa-unificada",
+  storageBucket: "rqa-unificada.firebasestorage.app",
+  messagingSenderId: "721404097537",
+  appId: "1:721404097537:web:36293e2ba8966a5d1dbc00"
+};
 function getFirebaseConfig(){
   try{
-    return JSON.parse(atob(FIREBASE_CONFIG_PARTS.join('')));
+    const parsed = JSON.parse(atob(FIREBASE_CONFIG_B64));
+    if(parsed && parsed.projectId) return parsed;
   }catch(err){
-    console.warn('Falha ao reconstruir configuração Firebase:', err);
-    return null;
+    console.warn('Falha ao reconstruir configuração Firebase, usando fallback local:', err);
   }
+  return { ...FIREBASE_CONFIG_FALLBACK };
 }
 let firebaseDb = null;
 let firebaseReady = false;
@@ -2782,7 +2787,7 @@ function secretariaBind(){
     else if(secTimer){ clearInterval(secTimer); secTimer=null; }
   });
   if(sw.checked) secTimer=setInterval(secretariaFetch, 30000);
-  el('btn-test-get').addEventListener('click', secretariaFetch);
+  el('btn-test-get').addEventListener('click', async ()=>{ await initFirebase(); await loadFirebaseData(); bindFirebaseRealtime(); secretariaFetch(); });
 }
 
 // ===== BACKUP E LIMPEZA =====
