@@ -1437,14 +1437,15 @@ function applyCloudSnapshot(collection, docs){
   const origem = collection===FIREBASE_COLLECTION_SECRETARIA ? 'Secretaria' : 'Lista';
   const incoming = docs.map(doc => normalizeRecord(doc.data(), origem));
   if(collection===FIREBASE_COLLECTION_SECRETARIA){
-    SEC_DB = mergeUniqueRecords([], incoming, 'Secretaria');
+    SEC_DB = mergeUniqueRecords(SEC_DB, incoming, 'Secretaria');
     persistSecretaria();
     renderSecretariaTabela();
   } else {
-    rqas = mergeUniqueRecords([], incoming, 'Lista');
+    rqas = mergeUniqueRecords(rqas, incoming, 'Lista');
     persist();
     listar();
   }
+  syncAllData();
 }
 async function loadFirebaseData(){
   if(!firebaseReady || !firebaseDb) return;
@@ -1510,38 +1511,61 @@ function syncAllData() {
     SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
 
     rqas.forEach(rqa => {
-        const secItem = SEC_DB.find(sec =>
+        const secIndex = SEC_DB.findIndex(sec =>
             sec.cloudKey === rqa.cloudKey ||
             (sec.matricula === rqa.matricula && sec.data === rqa.data && sec.titulo === rqa.titulo)
         );
-        if (secItem) {
+
+        if (secIndex === -1) {
+            SEC_DB.push(normalizeRecord({
+                ...rqa,
+                id: (String(rqa.id || '').startsWith('SEC-') ? rqa.id : ('SEC-' + (rqa.id || Date.now()))),
+                fonte:'Secretaria',
+                cloudKey: rqa.cloudKey || ''
+            }, 'Secretaria'));
+            changed = true;
+        } else {
+            const secItem = SEC_DB[secIndex];
             const nextStatus = rqa.status || secItem.status || 'Aberto';
             const merged = normalizeRecord({ ...secItem, ...rqa, status: nextStatus, fonte:'Secretaria' }, 'Secretaria');
             if (JSON.stringify(secItem) !== JSON.stringify(merged)) {
-                Object.assign(secItem, merged);
+                SEC_DB[secIndex] = merged;
                 changed = true;
             }
         }
     });
 
     SEC_DB.forEach(secItem => {
-        const rqaItem = rqas.find(rqa =>
+        const rqaIndex = rqas.findIndex(rqa =>
             rqa.cloudKey === secItem.cloudKey ||
             (rqa.matricula === secItem.matricula && rqa.data === secItem.data && rqa.titulo === secItem.titulo)
         );
-        if (rqaItem) {
+
+        if (rqaIndex === -1) {
+            rqas.push(normalizeRecord({
+                ...secItem,
+                id: String(secItem.id || '').replace(/^SEC-/, '') || Date.now(),
+                fonte:'Lista',
+                cloudKey: secItem.cloudKey || ''
+            }, 'Lista'));
+            changed = true;
+        } else {
+            const rqaItem = rqas[rqaIndex];
             const merged = normalizeRecord({ ...rqaItem, ...secItem, fonte:'Lista' }, 'Lista');
             if (JSON.stringify(rqaItem) !== JSON.stringify(merged)) {
-                Object.assign(rqaItem, merged);
+                rqas[rqaIndex] = merged;
                 changed = true;
             }
         }
     });
 
-    if (changed) {
-        persist();
-        persistSecretaria();
-    }
+    rqas = mergeUniqueRecords([], rqas, 'Lista');
+    SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
+
+    persist();
+    persistSecretaria();
+    listar();
+    renderSecretariaTabela();
     queueFirebaseSync();
     syncStatus = 'sincronizado ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
     el('sync-status').textContent = syncStatus;
@@ -2343,23 +2367,27 @@ function addSecRecords(list){
   let added = 0;
   for(const raw of list){
     const origem = raw?.fonte || (raw?.id && String(raw.id).startsWith('SEC-') ? 'Secretaria' : 'Lista');
-    const r = normalizeRecord({ ...raw, id: raw?.id || ('SEC-' + Date.now() + '-' + Math.random().toString(36).slice(2,7)), fonte: origem }, 'Secretaria');
+    const baseId = raw?.id ? String(raw.id) : '';
+    const secId = baseId.startsWith('SEC-') ? baseId : ('SEC-' + (baseId || (Date.now() + '-' + Math.random().toString(36).slice(2,7))));
+    const r = normalizeRecord({ ...raw, id: secId, fonte: 'Secretaria', cloudKey: raw?.cloudKey || '' }, 'Secretaria');
     const existeIdx = SEC_DB.findIndex(item =>
-      item.cloudKey === r.cloudKey ||
+      (item.cloudKey && r.cloudKey && item.cloudKey === r.cloudKey) ||
       item.id === r.id ||
-      (item.matricula === r.matricula && item.data === r.data && item.titulo === r.titulo)
+      ((item.matricula || '') === (r.matricula || '') && (item.data || '') === (r.data || '') && (item.titulo || '') === (r.titulo || ''))
     );
     if (existeIdx === -1) {
       SEC_DB.push(r);
       added++;
+      if(firebaseReady && !firebaseLoading){ firebaseUpsert(FIREBASE_COLLECTION_SECRETARIA, r).catch(err=>console.warn('Falha upsert secretaria:', err)); }
     } else {
-      SEC_DB[existeIdx] = normalizeRecord({ ...SEC_DB[existeIdx], ...r }, 'Secretaria');
+      SEC_DB[existeIdx] = normalizeRecord({ ...SEC_DB[existeIdx], ...r, fonte:'Secretaria' }, 'Secretaria');
+      if(firebaseReady && !firebaseLoading){ firebaseUpsert(FIREBASE_COLLECTION_SECRETARIA, SEC_DB[existeIdx]).catch(err=>console.warn('Falha upsert secretaria:', err)); }
     }
   }
   SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
   persistSecretaria();
   renderSecretariaTabela();
-  queueFirebaseSync();
+  syncAllData();
   return added;
 }
 
@@ -3022,7 +3050,8 @@ async function bindEvents(){
     const regs = JSON.parse(payload);
     if(regs.length===0) return;
     const added = addSecRecords(regs);
-    showToast(added + ' registro(s) novo(s) importado(s) para o banco da Secretaria.');
+    syncAllData();
+    showToast(added + ' registro(s) importado(s) para o banco da Secretaria e espelhado(s) na nuvem.');
   });
 
   el('sec-sel-all').addEventListener('change',(e)=>{
@@ -3081,13 +3110,17 @@ async function bindEvents(){
       );
       
       if (!existente) {
-        rqas.push(normalizeRecord(novoRegistro, 'Lista'));
+        const listaRec = normalizeRecord(novoRegistro, 'Lista');
+        rqas.push(listaRec);
+        addSecRecords([rec]);
         persist();
         listar();
-        queueFirebaseSync();
+        syncAllData();
         showToast('Registro enviado para a aba Lista.');
       } else {
-        showToast('Este registro já está na aba Lista.');
+        addSecRecords([rec]);
+        syncAllData();
+        showToast('Este registro já está na aba Lista, mas foi mantido no banco da Secretaria.');
       }
     } else if(act === 'del') {
       if(confirm('Excluir este registro da Secretaria?')){
