@@ -412,6 +412,7 @@
     padding: 0.1rem 0.4rem;
     margin-left: 0.5rem;
   }
+  .cloud-status-box{background:#f8fafc;border:1px solid var(--sam-border);border-radius:.75rem;padding:1rem;}
 </style>
 </head>
 <body>
@@ -495,14 +496,6 @@
                   <div class="col-md-4">
                     <label class="form-label">Gerência</label>
                     <input type="text" id="gerencia" class="form-control" placeholder="Ex.: Operação de Mina">
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label">Área</label>
-                    <select id="area" class="form-select">
-                      <option value="">Selecione</option>
-                      <option>Mecânica</option>
-                      <option>Elétrica</option>
-                    </select>
                   </div>
                 </div>
               </div>
@@ -875,7 +868,6 @@ Ver e Agir
                           <th style="width:100px;">Data</th>
                           <th>Título</th>
                           <th style="width:110px;">Local</th>
-                          <th style="width:95px;">Área</th>
                           <th style="width:110px;">Sistema</th>
                           <th style="width:120px;">Equipamento</th>
                           <th style="width:150px;">Descrição</th>
@@ -884,7 +876,7 @@ Ver e Agir
                         </tr>
                       </thead>
                       <tbody id="sec-tabela">
-                        <tr><td colspan="10" class="text-center text-muted py-4">Nenhum registro ainda.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted py-4">Nenhum registro ainda.</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -1015,25 +1007,53 @@ Ver e Agir
           
           <div class="row g-3">
             <div class="col-12">
+              <h6 class="mb-2">Firebase / Nuvem</h6>
+              <div class="cloud-status-box">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div>
+                    <div class="fw-semibold">Status da nuvem</div>
+                    <div class="small text-muted">Projeto: <strong>rqa-unificada</strong> • sincronização local + Firebase</div>
+                  </div>
+                  <div><span id="cloud-status" class="badge bg-secondary">Nuvem não iniciada</span></div>
+                </div>
+                <div class="row g-2 mt-2">
+                  <div class="col-md-3"><button id="btn-test-firebase" class="btn btn-outline-primary w-100"><i class="fa-solid fa-cloud me-2"></i>Testar Firebase</button></div>
+                  <div class="col-md-3"><button id="btn-sync-cloud-now" class="btn btn-outline-success w-100"><i class="fa-solid fa-rotate me-2"></i>Sincronizar Nuvem</button></div>
+                  <div class="col-md-3"><button id="btn-clear-cloud-rqas" class="btn btn-outline-danger w-100"><i class="fa-solid fa-trash me-2"></i>Limpar Nuvem RQAs</button></div>
+                  <div class="col-md-3"><button id="btn-clear-cloud-secretaria" class="btn btn-outline-danger w-100"><i class="fa-solid fa-trash me-2"></i>Limpar Nuvem Secretaria</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <hr class="my-3"/>
+
+          <div class="row g-3">
+            <div class="col-12">
               <h6 class="mb-2">Limpar Dados</h6>
               <div class="alert alert-warning">
                 <i class="fa-solid fa-triangle-exclamation me-2"></i>
                 <strong>Atenção:</strong> Estas ações não podem ser desfeitas. Faça backup primeiro.
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <button id="btn-backup-all" class="btn btn-outline-info w-100">
                 <i class="fa-solid fa-download me-2"></i>Backup Completo
               </button>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <button id="btn-clear-rqas" class="btn btn-outline-danger w-100">
                 <i class="fa-solid fa-trash me-2"></i>Limpar Lista RQAs
               </button>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <button id="btn-clear-secretaria" class="btn btn-outline-danger w-100">
                 <i class="fa-solid fa-trash me-2"></i>Limpar Secretaria
+              </button>
+            </div>
+            <div class="col-md-3">
+              <button id="btn-clear-cloud-all" class="btn btn-outline-dark w-100">
+                <i class="fa-solid fa-broom me-2"></i>Limpar Tudo na Nuvem
               </button>
             </div>
           </div>
@@ -1186,464 +1206,208 @@ const MAX_FOTOS=12;
 const STORAGE_KEY_RQAS = 'rqa_samarco_db_v36_integrado';
 const STORAGE_KEY_SECRETARIA = 'rqa_samarco_secretaria_v36_integrado';
 const STORAGE_KEY_CONFIG = 'rqa_samarco_config_v36';
-const FIREBASE_COLLECTION_RQAS = 'rqa_registros';
-const FIREBASE_COLLECTION_SECRETARIA = 'rqa_secretaria';
-const FIREBASE_CONFIG = Object.freeze({
+
+// ===== FIREBASE / NUVEM =====
+const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCCuxk9ymOHzaSImZTkr5KexV64kSt91pY",
   authDomain: "rqa-unificada.firebaseapp.com",
   projectId: "rqa-unificada",
   storageBucket: "rqa-unificada.firebasestorage.app",
   messagingSenderId: "721404097537",
   appId: "1:721404097537:web:36293e2ba8966a5d1dbc00"
-});
-const FIREBASE_CONFIG_PARTS = [];
-function getFirebaseConfig(){
-  if(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey) return FIREBASE_CONFIG;
-  try{
-    const joined = (FIREBASE_CONFIG_PARTS||[]).join('');
-    if(!joined) throw new Error('Config Firebase vazia');
-    return JSON.parse(atob(joined));
-  }catch(err){
-    console.warn('Falha ao reconstruir configuração Firebase, usando modo local:', err);
-    return null;
-  }
-}
+};
+const CLOUD_COLLECTION_RQAS = 'rqa_principal';
+const CLOUD_COLLECTION_SECRETARIA = 'rqa_secretaria';
 let firebaseDb = null;
 let firebaseReady = false;
-let firebaseSyncTimer = null;
-let firebaseLoading = false;
-let firebaseListenersBound = false;
-let suppressCloudEcho = false;
-let lastCloudDigest = { rqa:'', secretaria:'' };
-const APP_DB_NAME = 'rqa_samarco_v36_cache';
-const APP_DB_VERSION = 1;
-const APP_DB_STORES = { rqas:'rqas', secretaria:'secretaria' };
-let appDbPromise = null;
+let cloudListenersStarted = false;
+let cloudSyncInProgress = false;
 
-function updateSyncBadge(text, type='success'){
-  const badge = el('sync-status');
-  if(!badge) return;
-  const clsMap = { success:'bg-success', warning:'bg-warning text-dark', danger:'bg-danger', info:'bg-info text-dark', secondary:'bg-secondary' };
-  badge.className = `badge ${clsMap[type]||'bg-success'} sync-badge`;
-  badge.textContent = text;
-}
-function summarizeForDigest(rec){
-  return [rec.cloudKey, rec.status, rec.titulo, rec.data, rec.matricula, rec.sistema, rec.equipamento, rec.descricao, Array.isArray(rec.fotos)?rec.fotos.length:0].join('|');
-}
-function computeDigest(list){
-  return (list||[]).map(r=>normalizeRecord(r, r?.fonte||'Lista')).sort((a,b)=>String(a.cloudKey).localeCompare(String(b.cloudKey))).map(summarizeForDigest).join('¦');
-}
-function safeLocalSet(key, value){
-  try{ localStorage.setItem(key, value); return true; }catch(err){ console.warn('Falha localStorage:', key, err); return false; }
-}
-function safeLocalGet(key){
-  try{ return localStorage.getItem(key); }catch(err){ console.warn('Falha leitura localStorage:', key, err); return null; }
-}
-function openAppDb(){
-  if(appDbPromise) return appDbPromise;
-  appDbPromise = new Promise((resolve,reject)=>{
-    if(!window.indexedDB){ reject(new Error('IndexedDB indisponível')); return; }
-    const req = indexedDB.open(APP_DB_NAME, APP_DB_VERSION);
-    req.onupgradeneeded = ()=>{
-      const db = req.result;
-      Object.values(APP_DB_STORES).forEach(store=>{
-        if(!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath:'cloudKey' });
-      });
-    };
-    req.onsuccess = ()=>resolve(req.result);
-    req.onerror = ()=>reject(req.error || new Error('Falha ao abrir IndexedDB'));
-  }).catch(err=>{ console.warn(err); return null; });
-  return appDbPromise;
-}
-async function idbReplaceAll(storeName, list){
-  const db = await openAppDb();
-  if(!db) return;
-  await new Promise((resolve,reject)=>{
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    store.clear();
-    (list||[]).forEach(item=>store.put(item));
-    tx.oncomplete = ()=>resolve();
-    tx.onerror = ()=>reject(tx.error || new Error('Falha ao salvar IndexedDB'));
-  });
-}
-async function idbLoadAll(storeName){
-  const db = await openAppDb();
-  if(!db) return [];
-  return await new Promise((resolve,reject)=>{
-    const tx = db.transaction(storeName, 'readonly');
-    const store = tx.objectStore(storeName);
-    const req = store.getAll();
-    req.onsuccess = ()=>resolve(Array.isArray(req.result) ? req.result : []);
-    req.onerror = ()=>reject(req.error || new Error('Falha ao ler IndexedDB'));
-  }).catch(err=>{ console.warn(err); return []; });
-}
-async function idbClearStore(storeName){
-  const db = await openAppDb();
-  if(!db) return;
-  await new Promise((resolve,reject)=>{
-    const tx = db.transaction(storeName, 'readwrite');
-    tx.objectStore(storeName).clear();
-    tx.oncomplete = ()=>resolve();
-    tx.onerror = ()=>reject(tx.error || new Error('Falha ao limpar IndexedDB'));
-  }).catch(err=>console.warn(err));
-}
-function slimRecordForLocal(r){
-  return {
-    ...r,
-    fotos: Array.isArray(r.fotos) ? r.fotos.map((f, idx)=> idx===0 ? f : '').filter(Boolean) : []
-  };
-}
-
-function norm(v){ return String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
-function safeSlug(v){ return norm(v).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
-function brToIso(br){
-  const s = String(br||'').trim();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(!m) return '';
-  return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-}
-function isoOrBrDate(v){ return /^\d{4}-\d{2}-\d{2}$/.test(String(v||'')) ? toBR(v) : (v||''); }
-function inferAreaFromText(text=''){
-  const t = norm(text);
-  if(/\beletric/.test(t)) return 'Elétrica';
-  if(/\bmecanic/.test(t)) return 'Mecânica';
-  return '';
-}
-function inferLocalFromText(text=''){
-  const t = String(text||'');
-  const known = ['Mina Norte','Mina Sul','Área de Carga','Oficina','Correia Transportadora','Acesso Mina','Pátio','Usina','Almoxarifado','Mina'];
-  for(const loc of known){ if(new RegExp(loc,'i').test(t)) return loc; }
-  return '';
-}
-function inferSistemaFromText(text=''){
-  const t = String(text||'');
-  const patterns = [
-    [/complexo germano\s*\/\s*concentrador\s*1/i, 'Complexo Germano / Concentrador 1'],
-    [/fazend[aã]o/i, 'Fazendão'],
-    [/mina norte|\bnorte\b/i, 'Norte'],
-    [/mina sul|\bsul 2\b/i, 'Sul 2'],
-    [/\bsul 1\b/i, 'Sul 1'],
-    [/\bcentro\b/i, 'Centro'],
-    [/\busina\b/i, 'Usina']
-  ];
-  for(const [rx,val] of patterns){ if(rx.test(t)) return val; }
-  return '';
-}
-function inferEquipamentoFromText(text=''){
-  const patterns = [/\b\d{2}[A-Z]{2}\d{1,3}\b/i,/\bCA\s*\d{1,3}\b/i,/\bCV\s*\d{1,3}\b/i,/\bCR\s*\d{1,3}\b/i,/\bLK\s*\d{1,3}\b/i];
-  for(const rx of patterns){ const m = String(text||'').match(rx); if(m) return m[0].replace(/\s+/g,'').toUpperCase(); }
-  return '';
-}
-function recordFingerprint(r, origem='rqa'){
-  const dataIso = brToIso(r.data||'') || String(r.data||'');
-  const parts = [origem, dataIso, r.matricula, r.titulo, r.local, r.area, r.sistema, r.equipamento, String(r.descricao||'').slice(0,140)];
-  return parts.map(safeSlug).filter(Boolean).join('__') || `${origem}__${Date.now()}`;
-}
-function normalizeRecord(input={}, origem='Lista'){
-  const r = JSON.parse(JSON.stringify(input||{}));
-  const textoBase = [r.titulo,r.local,r.gerencia,r.sistema,r.equipamento,r.descricao,r.area].filter(Boolean).join(' | ');
-  if(!r.id) r.id = Date.now() + Math.floor(Math.random()*1000);
-  r.abordagem = r.abordagem || origem;
-  r.data = isoOrBrDate(r.data || todayISO());
-  r.colaborador = (r.colaborador||'').trim();
-  r.matricula = (r.matricula||'').trim();
-  r.titulo = (r.titulo||'').trim() || (r.equipamento ? `${r.equipamento} - ${r.local||'RQA'}` : 'RQA');
-  r.local = (r.local||'').trim() || inferLocalFromText(textoBase);
-  r.gerencia = (r.gerencia||'').trim();
-  r.area = (r.area||'').trim() || inferAreaFromText(textoBase);
-  r.sistema = (r.sistema||'').trim() || inferSistemaFromText(textoBase);
-  r.equipamento = (r.equipamento||'').trim() || inferEquipamentoFromText(textoBase);
-  r.categoria = r.categoria || 'PIT-STOP';
-  r.prioridade = r.prioridade || 'Média';
-  r.descricao = (r.descricao||'').trim();
-  r.fotos = Array.isArray(r.fotos) ? r.fotos : [];
-  r.status = r.status || 'Aberto';
-  r.fonte = r.fonte || origem;
-  r.cloudKey = r.cloudKey || recordFingerprint(r, origem === 'Secretaria' ? 'secretaria' : 'rqa');
-  return r;
-}
-function mergeUniqueRecords(baseList, incomingList, origem='Lista'){
-  const map = new Map();
-  [...(baseList||[]), ...(incomingList||[])].forEach(item => {
-    const rec = normalizeRecord(item, item?.fonte || origem);
-    const key = rec.cloudKey || recordFingerprint(rec, origem === 'Secretaria' ? 'secretaria' : 'rqa');
-    const prev = map.get(key) || {};
-    map.set(key, { ...prev, ...rec, cloudKey:key });
-  });
-  return Array.from(map.values());
-}
-
-async function initFirebase(){
-  try{
-    if(!(window.firebase && firebase.apps)){
-      updateSyncBadge('SDK Firebase ausente', 'warning');
-      return;
-    }
-    const firebaseConfig = getFirebaseConfig();
-    if(!firebaseConfig){
-      updateSyncBadge('Config Firebase inválida', 'danger');
-      return;
-    }
-    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    firebaseDb = firebase.firestore();
-    firebaseReady = true;
-    updateSyncBadge('Firebase conectado', 'info');
-    console.log('Firebase conectado', firebaseConfig.projectId);
-  }catch(err){
-    console.warn('Firebase indisponível:', err);
-    firebaseReady = false;
-    updateSyncBadge('Modo local', 'warning');
-  }
-}
-async function firebaseUpsert(collection, rec){
-  if(!firebaseReady || !firebaseDb || !rec) return;
-  const origem = collection===FIREBASE_COLLECTION_SECRETARIA ? 'Secretaria' : 'Lista';
-  const payload = normalizeRecord(rec, rec.fonte || origem);
-  await firebaseDb.collection(collection).doc(payload.cloudKey).set({
-    ...payload,
-    updatedAt: new Date().toISOString()
-  }, {merge:true});
-}
-async function firebaseDelete(collection, rec){
-  if(!firebaseReady || !firebaseDb || !rec) return;
-  const key = typeof rec === 'string' ? rec : (rec.cloudKey || recordFingerprint(rec, collection===FIREBASE_COLLECTION_SECRETARIA ? 'secretaria' : 'rqa'));
-  if(!key) return;
-  await firebaseDb.collection(collection).doc(key).delete().catch(()=>{});
-}
-function queueFirebaseSync(delay=900){
-  if(!firebaseReady || firebaseLoading) return;
-  clearTimeout(firebaseSyncTimer);
-  updateSyncBadge('Sincronizando...', 'warning');
-  firebaseSyncTimer = setTimeout(()=>{ syncLocalToFirebase().catch(err=>{ console.warn('Falha sync nuvem:', err); updateSyncBadge('Falha na nuvem', 'danger'); }); }, delay);
-}
-async function syncLocalToFirebase(){
-  if(!firebaseReady || !firebaseDb || suppressCloudEcho) return;
-  const lista = mergeUniqueRecords([], rqas, 'Lista');
-  const secretaria = mergeUniqueRecords([], SEC_DB, 'Secretaria');
-  const digestRqa = computeDigest(lista);
-  const digestSec = computeDigest(secretaria);
-  if(digestRqa===lastCloudDigest.rqa && digestSec===lastCloudDigest.secretaria){
-    updateSyncBadge('Sincronizado', 'success');
-    return;
-  }
-  await Promise.all(lista.map(r=>firebaseUpsert(FIREBASE_COLLECTION_RQAS, r)));
-  await Promise.all(secretaria.map(r=>firebaseUpsert(FIREBASE_COLLECTION_SECRETARIA, r)));
-  lastCloudDigest = { rqa:digestRqa, secretaria:digestSec };
-  updateSyncBadge('Sincronizado', 'success');
-}
-function applyCloudSnapshot(collection, docs){
-  const origem = collection===FIREBASE_COLLECTION_SECRETARIA ? 'Secretaria' : 'Lista';
-  const incoming = docs.map(doc => normalizeRecord(doc.data(), origem));
-  if(collection===FIREBASE_COLLECTION_SECRETARIA){
-    SEC_DB = mergeUniqueRecords(SEC_DB, incoming, 'Secretaria');
-    persistSecretaria();
-    renderSecretariaTabela();
-  } else {
-    rqas = mergeUniqueRecords(rqas, incoming, 'Lista');
-    persist();
-    listar();
-  }
-  syncAllData();
-}
-async function loadFirebaseData(){
-  if(!firebaseReady || !firebaseDb) return;
-  firebaseLoading = true;
-  updateSyncBadge('Lendo nuvem...', 'info');
-  try{
-    const [snapRqa, snapSec] = await Promise.all([
-      firebaseDb.collection(FIREBASE_COLLECTION_RQAS).get(),
-      firebaseDb.collection(FIREBASE_COLLECTION_SECRETARIA).get()
-    ]);
-    const cloudRqas = snapRqa.docs.map(doc => normalizeRecord(doc.data(), 'Lista'));
-    const cloudSec = snapSec.docs.map(doc => normalizeRecord(doc.data(), 'Secretaria'));
-    rqas = mergeUniqueRecords(rqas, cloudRqas, 'Lista');
-    SEC_DB = mergeUniqueRecords(SEC_DB, cloudSec, 'Secretaria');
-    persist();
-    persistSecretaria();
-    lastCloudDigest = { rqa:computeDigest(rqas), secretaria:computeDigest(SEC_DB) };
-    updateSyncBadge('Sincronizado', 'success');
-  }catch(err){
-    console.warn('Erro ao carregar Firebase:', err);
-    updateSyncBadge('Falha ao ler nuvem', 'danger');
-  } finally {
-    firebaseLoading = false;
-  }
-}
-
-async function testFirebaseWrite(){
-  if(!firebaseReady || !firebaseDb) throw new Error('Firebase não inicializado');
-  const probe = {
-    type: 'probe',
-    updatedAt: new Date().toISOString(),
-    source: 'rqa_v36_upgrade'
-  };
-  await firebaseDb.collection(FIREBASE_COLLECTION_RQAS).doc('__probe__').set(probe, { merge:true });
-  return true;
-}
-function bindFirebaseRealtime(){
-  if(!firebaseReady || !firebaseDb || firebaseListenersBound) return;
-  firebaseListenersBound = true;
-  const bindOne = (collection, onApply)=>{
-    return firebaseDb.collection(collection).onSnapshot(snapshot=>{
-      if(firebaseLoading) return;
-      suppressCloudEcho = true;
-      try{ onApply(snapshot.docs); }
-      finally{
-        if(collection===FIREBASE_COLLECTION_SECRETARIA) lastCloudDigest.secretaria = computeDigest(SEC_DB);
-        else lastCloudDigest.rqa = computeDigest(rqas);
-        setTimeout(()=>{ suppressCloudEcho = false; }, 120);
-      }
-    }, err=>{
-      console.warn('Listener Firebase falhou:', collection, err);
-      updateSyncBadge('Listener offline', 'warning');
-    });
-  };
-  bindOne(FIREBASE_COLLECTION_RQAS, docs=>applyCloudSnapshot(FIREBASE_COLLECTION_RQAS, docs));
-  bindOne(FIREBASE_COLLECTION_SECRETARIA, docs=>applyCloudSnapshot(FIREBASE_COLLECTION_SECRETARIA, docs));
-}
+function updateCloudStatus(text, type='secondary'){ const badge = el('cloud-status'); if(!badge) return; badge.className = 'badge bg-' + type; badge.textContent = text; }
+function safeCloudId(prefix, value){ const raw = String(value == null ? (Date.now() + '-' + Math.random().toString(36).slice(2,8)) : value); return prefix + '_' + raw.replace(/[^a-zA-Z0-9_-]/g, '_'); }
+function clonePlain(obj){ return JSON.parse(JSON.stringify(obj || {})); }
+function normalizeRqaItem(r, fallbackIndex=0){ return { id: (typeof r.id === 'number' || typeof r.id === 'string') ? r.id : (Date.now() + fallbackIndex), abordagem: r.abordagem || '', data: r.data || todayISO(), colaborador: r.colaborador || '', matricula: r.matricula || '', titulo: r.titulo || 'RQA sem título', local: r.local || '', gerencia: r.gerencia || '', sistema: r.sistema || '', equipamento: r.equipamento || '', categoria: r.categoria || 'PIT-STOP', prioridade: r.prioridade || 'Média', descricao: r.descricao || '', fotos: Array.isArray(r.fotos) ? r.fotos : [], status: r.status || 'Aberto' }; }
+function normalizeSecItem(r, fallbackIndex=0){ return { id: r.id || ('SEC-' + Date.now() + '-' + fallbackIndex), abordagem: r.abordagem || 'Secretaria', data: r.data || todayISO(), colaborador: r.colaborador || '', matricula: r.matricula || '', titulo: r.titulo || 'RQA Secretaria', local: r.local || '', gerencia: r.gerencia || '', sistema: r.sistema || '', equipamento: r.equipamento || '', categoria: r.categoria || 'PIT-STOP', prioridade: r.prioridade || 'Média', descricao: r.descricao || '', fotos: Array.isArray(r.fotos) ? r.fotos : [], status: r.status || 'Aberto', fonte: r.fonte || 'Secretaria' }; }
+function prepareForCloud(item, type='rqa'){ const data = clonePlain(item); data.updatedAt = new Date().toISOString(); data.cloudType = type; const json = JSON.stringify(data); if(json.length > 700000){ data.fotos = []; data.fotosCloudOmitted = true; } return data; }
+async function initFirebaseCloud(){ try{ if(firebaseReady && firebaseDb) return true; if(typeof firebase === 'undefined' || !firebase.apps){ updateCloudStatus('SDK Firebase não carregado', 'danger'); return false; } if(!firebase.apps.length){ firebase.initializeApp(FIREBASE_CONFIG); } firebaseDb = firebase.firestore(); firebaseReady = true; updateCloudStatus('Firebase conectado', 'success'); return true; }catch(err){ console.error('Falha ao iniciar Firebase:', err); updateCloudStatus('Falha ao conectar Firebase', 'danger'); return false; } }
+async function saveRqaToCloud(rqa){ if(!firebaseReady || !firebaseDb || cloudSyncInProgress) return; const item = normalizeRqaItem(rqa); await firebaseDb.collection(CLOUD_COLLECTION_RQAS).doc(safeCloudId('RQA', item.id)).set(prepareForCloud(item, 'rqa'), { merge:true }); }
+async function saveSecretariaToCloud(rec){ if(!firebaseReady || !firebaseDb || cloudSyncInProgress) return; const item = normalizeSecItem(rec); await firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).doc(safeCloudId('SEC', item.id)).set(prepareForCloud(item, 'secretaria'), { merge:true }); }
+async function deleteRqaFromCloud(id){ if(!firebaseReady || !firebaseDb) return; await firebaseDb.collection(CLOUD_COLLECTION_RQAS).doc(safeCloudId('RQA', id)).delete().catch(()=>{}); }
+async function deleteSecretariaFromCloud(id){ if(!firebaseReady || !firebaseDb) return; await firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).doc(safeCloudId('SEC', id)).delete().catch(()=>{}); }
+function mergeById(localArr, cloudArr, normalizer){ const map = new Map(); (localArr || []).forEach((item, idx) => { const n = normalizer(item, idx); map.set(String(n.id), n); }); (cloudArr || []).forEach((item, idx) => { const n = normalizer(item, idx); map.set(String(n.id), { ...(map.get(String(n.id)) || {}), ...n }); }); return Array.from(map.values()); }
+async function syncFromCloudOnce(){ if(!firebaseReady || !firebaseDb) return false; cloudSyncInProgress = true; try{ updateCloudStatus('Lendo nuvem...', 'warning'); const [rqasSnap, secSnap] = await Promise.all([firebaseDb.collection(CLOUD_COLLECTION_RQAS).get(), firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).get()]); const cloudRqas = rqasSnap.docs.map(doc => doc.data()).filter(Boolean); const cloudSec = secSnap.docs.map(doc => doc.data()).filter(Boolean); const hadLocalRqas = rqas.length; const hadLocalSec = SEC_DB.length; rqas = mergeById(rqas, cloudRqas, normalizeRqaItem); SEC_DB = mergeById(SEC_DB, cloudSec, normalizeSecItem); persist(); persistSecretaria(); listar(); renderSecretariaTabela(); if(cloudRqas.length === 0 && hadLocalRqas){ for(const item of rqas){ await saveRqaToCloud(item); } } if(cloudSec.length === 0 && hadLocalSec){ for(const item of SEC_DB){ await saveSecretariaToCloud(item); } } updateCloudStatus('Nuvem sincronizada', 'success'); return true; }catch(err){ console.error('Erro ao sincronizar nuvem:', err); updateCloudStatus('Erro ao ler nuvem', 'danger'); return false; }finally{ cloudSyncInProgress = false; } }
+function startCloudListeners(){ if(!firebaseReady || !firebaseDb || cloudListenersStarted) return; cloudListenersStarted = true; firebaseDb.collection(CLOUD_COLLECTION_RQAS).onSnapshot((snap)=>{ if(cloudSyncInProgress) return; const cloudRqas = snap.docs.map(doc => doc.data()).filter(Boolean); rqas = mergeById(rqas, cloudRqas, normalizeRqaItem); persist(); listar(); el('total-rqas').textContent = rqas.length; updateCloudStatus('Nuvem em tempo real ativa', 'success'); }, err => { console.error(err); updateCloudStatus('Falha na escuta RQAs', 'danger'); }); firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).onSnapshot((snap)=>{ if(cloudSyncInProgress) return; const cloudSec = snap.docs.map(doc => doc.data()).filter(Boolean); SEC_DB = mergeById(SEC_DB, cloudSec, normalizeSecItem); persistSecretaria(); renderSecretariaTabela(); }, err => { console.error(err); updateCloudStatus('Falha na escuta Secretaria', 'danger'); }); }
+async function syncCloudNow(){ const ok = await initFirebaseCloud(); if(!ok) return; for(const item of rqas){ await saveRqaToCloud(item); } for(const item of SEC_DB){ await saveSecretariaToCloud(item); } await syncFromCloudOnce(); startCloudListeners(); showToast('Sincronização com Firebase concluída.'); }
+async function clearCloudCollection(collectionName){ const ok = await initFirebaseCloud(); if(!ok) return; updateCloudStatus('Limpando nuvem...', 'warning'); const snap = await firebaseDb.collection(collectionName).get(); if(snap.empty){ updateCloudStatus('Nuvem já está limpa', 'secondary'); return; } let batch = firebaseDb.batch(); let ops = 0; for(const doc of snap.docs){ batch.delete(doc.ref); ops++; if(ops % 400 === 0){ await batch.commit(); batch = firebaseDb.batch(); } } if(ops % 400 !== 0){ await batch.commit(); } updateCloudStatus('Nuvem limpa com sucesso', 'success'); }
 
 // ===== SISTEMA DE SINCRONIZAÇÃO BIDIRECIONAL =====
 function syncAllData() {
     let changed = false;
-    rqas = mergeUniqueRecords([], rqas, 'Lista');
-    SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
-
+    
+    // Sincronizar status da Lista para Secretaria
     rqas.forEach(rqa => {
-        const secIndex = SEC_DB.findIndex(sec =>
-            sec.cloudKey === rqa.cloudKey ||
-            (sec.matricula === rqa.matricula && sec.data === rqa.data && sec.titulo === rqa.titulo)
+        const secItem = SEC_DB.find(sec => 
+            sec.matricula === rqa.matricula && 
+            sec.data === rqa.data && 
+            sec.titulo === rqa.titulo
         );
-
-        if (secIndex === -1) {
-            SEC_DB.push(normalizeRecord({
-                ...rqa,
-                id: (String(rqa.id || '').startsWith('SEC-') ? rqa.id : ('SEC-' + (rqa.id || Date.now()))),
-                fonte:'Secretaria',
-                cloudKey: rqa.cloudKey || ''
-            }, 'Secretaria'));
+        if (secItem && secItem.status !== rqa.status) {
+            secItem.status = rqa.status;
             changed = true;
-        } else {
-            const secItem = SEC_DB[secIndex];
-            const nextStatus = rqa.status || secItem.status || 'Aberto';
-            const merged = normalizeRecord({ ...secItem, ...rqa, status: nextStatus, fonte:'Secretaria' }, 'Secretaria');
-            if (JSON.stringify(secItem) !== JSON.stringify(merged)) {
-                SEC_DB[secIndex] = merged;
-                changed = true;
-            }
         }
     });
-
+    
+    // Sincronizar status da Secretaria para Lista
     SEC_DB.forEach(secItem => {
-        const rqaIndex = rqas.findIndex(rqa =>
-            rqa.cloudKey === secItem.cloudKey ||
-            (rqa.matricula === secItem.matricula && rqa.data === secItem.data && rqa.titulo === secItem.titulo)
+        const rqaItem = rqas.find(rqa => 
+            rqa.matricula === secItem.matricula && 
+            rqa.data === secItem.data && 
+            rqa.titulo === secItem.titulo
         );
-
-        if (rqaIndex === -1) {
-            rqas.push(normalizeRecord({
-                ...secItem,
-                id: String(secItem.id || '').replace(/^SEC-/, '') || Date.now(),
-                fonte:'Lista',
-                cloudKey: secItem.cloudKey || ''
-            }, 'Lista'));
+        if (rqaItem && rqaItem.status !== secItem.status) {
+            rqaItem.status = secItem.status;
             changed = true;
-        } else {
-            const rqaItem = rqas[rqaIndex];
-            const merged = normalizeRecord({ ...rqaItem, ...secItem, fonte:'Lista' }, 'Lista');
-            if (JSON.stringify(rqaItem) !== JSON.stringify(merged)) {
-                rqas[rqaIndex] = merged;
-                changed = true;
-            }
         }
     });
-
-    rqas = mergeUniqueRecords([], rqas, 'Lista');
-    SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
-
-    persist();
-    persistSecretaria();
-    listar();
-    renderSecretariaTabela();
-    queueFirebaseSync();
-    syncStatus = 'sincronizado ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
-    el('sync-status').textContent = syncStatus;
-    el('sync-status').className = 'badge bg-success sync-badge';
+    
+    if (changed) {
+        persist();
+        persistSecretaria();
+        syncStatus = 'sincronizado ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+        el('sync-status').textContent = syncStatus;
+        el('sync-status').className = 'badge bg-success sync-badge';
+    }
 }
 
 // ===== PERSISTÊNCIA ROBUSTA =====
 function persist() {
     try {
-        rqas = mergeUniqueRecords([], rqas, 'Lista');
         const dataToSave = {
-            version: '3.7',
+            version: '3.6',
             lastUpdate: new Date().toISOString(),
-            rqas: rqas.map(slimRecordForLocal)
+            rqas: rqas.map(r => ({
+                id: typeof r.id === 'number' ? r.id : (Date.now() + Math.floor(Math.random() * 1000)),
+                abordagem: r.abordagem || '',
+                data: r.data || todayISO(),
+                colaborador: r.colaborador || '',
+                matricula: r.matricula || '',
+                titulo: r.titulo || '',
+                local: r.local || '',
+                gerencia: r.gerencia || '',
+                sistema: r.sistema || '',
+                equipamento: r.equipamento || '',
+                categoria: r.categoria || 'PIT-STOP',
+                prioridade: r.prioridade || 'Média',
+                descricao: r.descricao || '',
+                fotos: Array.isArray(r.fotos) ? r.fotos : [],
+                status: r.status || 'Aberto'
+            }))
         };
-        safeLocalSet(STORAGE_KEY_RQAS, JSON.stringify(dataToSave));
-        idbReplaceAll(APP_DB_STORES.rqas, rqas).catch(err=>console.warn('Falha IndexedDB RQAs:', err));
+        
+        localStorage.setItem(STORAGE_KEY_RQAS, JSON.stringify(dataToSave));
         console.log('RQAs salvas:', rqas.length);
+        if(firebaseReady && !cloudSyncInProgress){ rqas.forEach(item => saveRqaToCloud(item).catch(err=>console.warn('Falha ao salvar RQA na nuvem:', err))); }
+        
+        // Atualizar contador
         el('total-rqas').textContent = rqas.length;
+        
     } catch(e) {
         console.warn('Erro ao salvar RQAs:', e);
-        updateSyncBadge('Falha local', 'danger');
+        el('sync-status').className = 'badge bg-danger sync-badge';
+        el('sync-status').textContent = 'erro ao salvar';
+        
+        // Tentar fallback
+        try {
+            localStorage.setItem(STORAGE_KEY_RQAS + '_backup', JSON.stringify(rqas.slice(0, 20)));
+        } catch (e2) {
+            console.error('Falha no backup:', e2);
+        }
     }
 }
 
 function persistSecretaria() {
     try {
-        SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
         const dataToSave = {
-            version: '3.7',
+            version: '3.6',
             lastUpdate: new Date().toISOString(),
-            secDb: SEC_DB.map(slimRecordForLocal)
+            secDb: SEC_DB.map(r => ({
+                id: r.id || 'SEC-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9),
+                abordagem: r.abordagem || 'Secretaria',
+                data: r.data || todayISO(),
+                colaborador: r.colaborador || '',
+                matricula: r.matricula || '',
+                titulo: r.titulo || 'RQA Secretaria',
+                local: r.local || '',
+                gerencia: r.gerencia || '',
+                sistema: r.sistema || '',
+                equipamento: r.equipamento || '',
+                categoria: r.categoria || 'PIT-STOP',
+                prioridade: r.prioridade || 'Média',
+                descricao: r.descricao || '',
+                fotos: Array.isArray(r.fotos) ? r.fotos : [],
+                status: r.status || 'Aberto',
+                fonte: r.fonte || 'Secretaria'
+            }))
         };
-        safeLocalSet(STORAGE_KEY_SECRETARIA, JSON.stringify(dataToSave));
-        idbReplaceAll(APP_DB_STORES.secretaria, SEC_DB).catch(err=>console.warn('Falha IndexedDB Secretaria:', err));
+        
+        localStorage.setItem(STORAGE_KEY_SECRETARIA, JSON.stringify(dataToSave));
         console.log('Secretaria salva:', SEC_DB.length);
+        if(firebaseReady && !cloudSyncInProgress){ SEC_DB.forEach(item => saveSecretariaToCloud(item).catch(err=>console.warn('Falha ao salvar Secretaria na nuvem:', err))); }
+        
     } catch(e) {
         console.warn('Erro ao salvar Secretaria:', e);
     }
 }
 
-async function load() {
+function load() {
     try {
-        const fromIdb = await idbLoadAll(APP_DB_STORES.rqas);
-        if (Array.isArray(fromIdb) && fromIdb.length) {
-            rqas = mergeUniqueRecords([], fromIdb, 'Lista');
+        const data = localStorage.getItem(STORAGE_KEY_RQAS);
+        if (data) {
+            const parsed = JSON.parse(data);
+            rqas = Array.isArray(parsed) ? parsed : (parsed.rqas || []);
+            
+            // Normalizar dados
+            rqas = rqas.map((r, index) => ({
+                id: typeof r.id === 'number' ? r.id : (Date.now() + index),
+                abordagem: r.abordagem || '',
+                data: r.data || todayISO(),
+                colaborador: r.colaborador || '',
+                matricula: r.matricula || '',
+                titulo: r.titulo || 'RQA sem título',
+                local: r.local || '',
+                gerencia: r.gerencia || '',
+                sistema: r.sistema || '',
+                equipamento: r.equipamento || '',
+                categoria: r.categoria || 'PIT-STOP',
+                prioridade: r.prioridade || 'Média',
+                descricao: r.descricao || '',
+                fotos: Array.isArray(r.fotos) ? r.fotos : [],
+                status: r.status || 'Aberto'
+            }));
+            
+            console.log('RQAs carregadas:', rqas.length);
+            el('total-rqas').textContent = rqas.length;
+            
         } else {
-            const data = safeLocalGet(STORAGE_KEY_RQAS);
-            if (data) {
-                const parsed = JSON.parse(data);
-                rqas = mergeUniqueRecords([], Array.isArray(parsed) ? parsed : (parsed.rqas || []), 'Lista');
-            } else {
-                rqas = [];
-            }
+            rqas = [];
         }
-        console.log('RQAs carregadas:', rqas.length);
-        el('total-rqas').textContent = rqas.length;
     } catch(e) {
         console.warn('Erro ao carregar RQAs:', e);
         rqas = [];
     }
 }
 
-async function loadSecretaria() {
+function loadSecretaria() {
     try {
-        const fromIdb = await idbLoadAll(APP_DB_STORES.secretaria);
-        if (Array.isArray(fromIdb) && fromIdb.length) {
-            SEC_DB = mergeUniqueRecords([], fromIdb, 'Secretaria');
+        const data = localStorage.getItem(STORAGE_KEY_SECRETARIA);
+        if (data) {
+            const parsed = JSON.parse(data);
+            SEC_DB = Array.isArray(parsed) ? parsed : (parsed.secDb || []);
+            
+            console.log('Secretaria carregada:', SEC_DB.length);
         } else {
-            const data = safeLocalGet(STORAGE_KEY_SECRETARIA);
-            if (data) {
-                const parsed = JSON.parse(data);
-                SEC_DB = mergeUniqueRecords([], Array.isArray(parsed) ? parsed : (parsed.secDb || []), 'Secretaria');
-            } else {
-                SEC_DB = [];
-            }
+            SEC_DB = [];
         }
-        console.log('Secretaria carregada:', SEC_DB.length);
     } catch(e) {
         console.warn('Erro ao carregar Secretaria:', e);
         SEC_DB = [];
@@ -1656,8 +1420,6 @@ window.addEventListener('beforeunload', function() {
     persist();
     persistSecretaria();
 });
-window.addEventListener('online', ()=> updateSyncBadge('Online', 'info'));
-window.addEventListener('offline', ()=> updateSyncBadge('Offline', 'warning'));
 
 // ===== FOTOS =====
 function renderThumbs(){
@@ -1795,8 +1557,7 @@ function onSubmitRQA(e){
   const btn=el('btn-enviar'); 
   btn.disabled=true;
   try{
-    const currentExisting = currentEditId ? rqas.find(x => x.id === currentEditId) : null;
-    const rqa = normalizeRecord({ 
+    const rqa={ 
       id: currentEditId || Date.now(),
       abordagem: _abordagemTexto(),
       data:toBR(el('data').value||todayISO()),
@@ -1805,17 +1566,14 @@ function onSubmitRQA(e){
       titulo:(el('titulo').value||'').trim(),
       local:el('local').value,
       gerencia:(el('gerencia').value||'').trim(),
-      area: el('area') ? el('area').value : '',
       sistema: _sistemaSelecionado(),
       equipamento: _equipamentoSelecionado(),
       categoria:el('categoria').value,
       prioridade:el('prioridade').value,
       descricao:(el('descricao').value||'').trim(),
       fotos:anexosTemp.slice(0,MAX_FOTOS),
-      status:(currentExisting && currentExisting.status) || 'Aberto',
-      fonte:'Lista',
-      cloudKey: currentExisting?.cloudKey || ''
-    }, 'Lista');
+      status:'Aberto'
+    };
     
     if (currentEditId) {
       // Atualizar RQA existente
@@ -1863,9 +1621,8 @@ function deleteRqa(id){
     if(confirm('Tem certeza que deseja excluir esta RQA? Esta ação não pode ser desfeita.')) {
         const removed = rqas.splice(idx,1)[0]; 
         persist(); 
+        if(removed) deleteRqaFromCloud(removed.id).catch(err=>console.warn('Falha ao excluir RQA da nuvem:', err)); 
         listar(); 
-        firebaseDelete(FIREBASE_COLLECTION_RQAS, removed);
-        queueFirebaseSync(); 
         showToast('RQA excluída com sucesso!');
     }
 }
@@ -1933,7 +1690,6 @@ function carregarRqaNoFormulario(r) {
     
     el('local').value = r.local || '';
     el('gerencia').value = r.gerencia || '';
-    if(el('area')) el('area').value = r.area || '';
     el('categoria').value = r.categoria || 'PIT-STOP';
     el('prioridade').value = r.prioridade || 'Média';
     el('descricao').value = r.descricao || '';
@@ -2364,39 +2120,28 @@ async function sendToSAP(){
 
 // ===== SECRETARIA =====
 function addSecRecords(list){
-  let added = 0;
-  for(const raw of list){
-    const origem = raw?.fonte || (raw?.id && String(raw.id).startsWith('SEC-') ? 'Secretaria' : 'Lista');
-    const baseId = raw?.id ? String(raw.id) : '';
-    const secId = baseId.startsWith('SEC-') ? baseId : ('SEC-' + (baseId || (Date.now() + '-' + Math.random().toString(36).slice(2,7))));
-    const r = normalizeRecord({ ...raw, id: secId, fonte: 'Secretaria', cloudKey: raw?.cloudKey || '' }, 'Secretaria');
-    const existeIdx = SEC_DB.findIndex(item =>
-      (item.cloudKey && r.cloudKey && item.cloudKey === r.cloudKey) ||
-      item.id === r.id ||
-      ((item.matricula || '') === (r.matricula || '') && (item.data || '') === (r.data || '') && (item.titulo || '') === (r.titulo || ''))
-    );
-    if (existeIdx === -1) {
+  for(const r of list){
+    if (!r.id) {
+      r.id = 'SEC-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+    }
+    if (!r.status) r.status = 'Aberto';
+    if (!r.fotos) r.fotos = [];
+    if (!r.abordagem) r.abordagem = r.abordagem || 'Secretaria';
+    
+    const existe = SEC_DB.find(item => item.id === r.id || 
+      (item.matricula === r.matricula && item.data === r.data && item.titulo === r.titulo));
+    
+    if (!existe) {
       SEC_DB.push(r);
-      added++;
-      if(firebaseReady && !firebaseLoading){ firebaseUpsert(FIREBASE_COLLECTION_SECRETARIA, r).catch(err=>console.warn('Falha upsert secretaria:', err)); }
-    } else {
-      SEC_DB[existeIdx] = normalizeRecord({ ...SEC_DB[existeIdx], ...r, fonte:'Secretaria' }, 'Secretaria');
-      if(firebaseReady && !firebaseLoading){ firebaseUpsert(FIREBASE_COLLECTION_SECRETARIA, SEC_DB[existeIdx]).catch(err=>console.warn('Falha upsert secretaria:', err)); }
     }
   }
-  SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
   persistSecretaria();
   renderSecretariaTabela();
-  syncAllData();
-  return added;
 }
 
 function deleteSecRecords(ids){
-  const removidos = SEC_DB.filter(r=>ids.map(String).includes(String(r.id)));
   SEC_DB = SEC_DB.filter(r=>!ids.map(String).includes(String(r.id)));
-  removidos.forEach(r=>firebaseDelete(FIREBASE_COLLECTION_SECRETARIA, r));
   persistSecretaria();
-  queueFirebaseSync();
   renderSecretariaTabela();
   showToast('Registros excluídos da Secretaria.');
 }
@@ -2462,7 +2207,6 @@ class SecretariaAnalyzer{
       matricula:'',
       local:'',
       gerencia:'',
-      area:'',
       sistema:'',
       equipamento:'',
       categoria:'',
@@ -2485,8 +2229,6 @@ class SecretariaAnalyzer{
     r.confid.local = this.score(r.local);
     r.gerencia = this.extractGerencia(sec);
     r.confid.gerencia = this.score(r.gerencia);
-    r.area = this.extractArea(sec);
-    r.confid.area = this.score(r.area);
 
     r.sistema = this.extractSistema(sec);
     r.confid.sistema = this.score(r.sistema);
@@ -2603,28 +2345,14 @@ class SecretariaAnalyzer{
     return '';
   }
 
-  extractArea(text){
-    let m = text.match(/(?:Área|Area):\s*([^\n]+)/i);
-    if(m){
-      const v = m[1].trim();
-      if(/eletric/i.test(v)) return 'Elétrica';
-      if(/mecanic/i.test(v)) return 'Mecânica';
-    }
-    if(/eletric/i.test(text)) return 'Elétrica';
-    if(/mecanic/i.test(text)) return 'Mecânica';
-    return '';
-  }
-
   extractSistema(text){
     let m = text.match(/🔧\s*\*?Sistema:\*?\s*([^\n*]+)/i);
     if(m) return m[1].trim();
     for(const s of this.knownSystems){
       if(new RegExp(s,'i').test(text)) return s;
     }
-    if(/complexo germano\s*\/\s*concentrador\s*1/i.test(text)) return 'Complexo Germano / Concentrador 1';
     if(/mina norte/i.test(text)) return 'Norte';
     if(/mina sul/i.test(text)) return 'Sul 2';
-    if(/usina/i.test(text)) return 'Usina';
     return '';
   }
 
@@ -2661,9 +2389,8 @@ const analyzer = new SecretariaAnalyzer();
 function renderSecretariaTabela(){
   const tbody = el('sec-tabela');
   tbody.innerHTML = '';
-  SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria').sort((a,b)=> parseDateBR(b.data) - parseDateBR(a.data));
   if(SEC_DB.length===0){
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Nenhum registro ainda.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Nenhum registro ainda.</td></tr>';
     el('sec-total').textContent = '0 registros';
     updateSecStats();
     return;
@@ -2678,7 +2405,6 @@ function renderSecretariaTabela(){
       <td>${r.data || ''}</td>
       <td>${r.titulo||''}</td>
       <td>${r.local||''}</td>
-      <td>${r.area||''}</td>
       <td>${r.sistema||''}</td>
       <td>${r.equipamento||''}</td>
       <td title="${(r.descricao||'').replace(/"/g, '&quot;')}">${descShort}</td>
@@ -2872,19 +2598,15 @@ function clearSecretaria(){
   if(confirm('Tem certeza que deseja limpar TODOS os dados da Secretaria? Esta ação não pode ser desfeita.')) {
     SEC_DB = [];
     persistSecretaria();
-    queueFirebaseSync();
     renderSecretariaTabela();
     showToast('Secretaria limpa com sucesso.');
   }
 }
 
 // ===== BIND =====
-async function bindEvents(){
-  await initFirebase();
-  await load();
-  await loadSecretaria();
-  await loadFirebaseData();
-  bindFirebaseRealtime();
+function bindEvents(){
+  load();
+  loadSecretaria();
   
   el('data').value=todayISO();
   
@@ -3049,9 +2771,8 @@ async function bindEvents(){
     if(!payload) return;
     const regs = JSON.parse(payload);
     if(regs.length===0) return;
-    const added = addSecRecords(regs);
-    syncAllData();
-    showToast(added + ' registro(s) importado(s) para o banco da Secretaria e espelhado(s) na nuvem.');
+    addSecRecords(regs);
+    showToast(regs.length+' registro(s) importado(s) para o banco da Secretaria.');
   });
 
   el('sec-sel-all').addEventListener('change',(e)=>{
@@ -3092,15 +2813,13 @@ async function bindEvents(){
         titulo: rec.titulo || 'RQA Importada',
         local: rec.local || '',
         gerencia: rec.gerencia || '',
-        area: rec.area || '',
         sistema: rec.sistema || '',
         equipamento: rec.equipamento || '',
         categoria: rec.categoria || 'PIT-STOP',
         prioridade: rec.prioridade || 'Média',
         descricao: rec.descricao || '',
         fotos: Array.isArray(rec.fotos) ? [...rec.fotos] : [],
-        status: rec.status || 'Aberto',
-        cloudKey: rec.cloudKey || ''
+        status: rec.status || 'Aberto'
       };
       
       const existente = rqas.find(r => 
@@ -3110,17 +2829,12 @@ async function bindEvents(){
       );
       
       if (!existente) {
-        const listaRec = normalizeRecord(novoRegistro, 'Lista');
-        rqas.push(listaRec);
-        addSecRecords([rec]);
+        rqas.push(novoRegistro);
         persist();
         listar();
-        syncAllData();
         showToast('Registro enviado para a aba Lista.');
       } else {
-        addSecRecords([rec]);
-        syncAllData();
-        showToast('Este registro já está na aba Lista, mas foi mantido no banco da Secretaria.');
+        showToast('Este registro já está na aba Lista.');
       }
     } else if(act === 'del') {
       if(confirm('Excluir este registro da Secretaria?')){
@@ -3152,14 +2866,13 @@ async function bindEvents(){
   el('sec-export-excel').addEventListener('click',()=>{
     if(SEC_DB.length===0){ showToast('Nada para exportar.', 'warning'); return; }
     const wsData = [
-      ['Data','Título','Local','Área','Sistema','Equipamento','Categoria','Prioridade','Status','Colaborador','Matrícula','Gerência','Descrição','Fonte']
+      ['Data','Título','Local','Sistema','Equipamento','Categoria','Prioridade','Status','Colaborador','Matrícula','Gerência','Descrição','Fonte']
     ];
     SEC_DB.forEach(r=>{
       wsData.push([
         r.data || '',
         r.titulo||'',
         r.local||'',
-        r.area||'',
         r.sistema||'',
         r.equipamento||'',
         r.categoria||'',
@@ -3203,6 +2916,11 @@ async function bindEvents(){
   el('btn-backup-all').addEventListener('click', backupAllData);
   el('btn-clear-rqas').addEventListener('click', clearRQAs);
   el('btn-clear-secretaria').addEventListener('click', clearSecretaria);
+  el('btn-test-firebase').addEventListener('click', async ()=>{ const ok = await initFirebaseCloud(); showToast(ok ? 'Firebase conectado com sucesso.' : 'Falha ao conectar no Firebase.'); });
+  el('btn-sync-cloud-now').addEventListener('click', syncCloudNow);
+  el('btn-clear-cloud-rqas').addEventListener('click', async ()=>{ if(!confirm('Limpar todos os registros de RQAs na nuvem?')) return; await clearCloudCollection(CLOUD_COLLECTION_RQAS); });
+  el('btn-clear-cloud-secretaria').addEventListener('click', async ()=>{ if(!confirm('Limpar todos os registros da Secretaria na nuvem?')) return; await clearCloudCollection(CLOUD_COLLECTION_SECRETARIA); });
+  el('btn-clear-cloud-all').addEventListener('click', async ()=>{ if(!confirm('Limpar TUDO na nuvem (RQAs + Secretaria)?')) return; await clearCloudCollection(CLOUD_COLLECTION_RQAS); await clearCloudCollection(CLOUD_COLLECTION_SECRETARIA); showToast('Limpeza completa da nuvem concluída.'); });
 
   // Sincronização periódica
   setInterval(() => {
@@ -3210,7 +2928,6 @@ async function bindEvents(){
   }, 30000);
 
   // Inicializar
-  syncAllData();
   listar();
   renderThumbs();
   renderCatalog('');
@@ -3222,6 +2939,8 @@ async function bindEvents(){
   
   el('sync-status').textContent = syncStatus;
   el('total-rqas').textContent = rqas.length;
+
+  initFirebaseCloud().then(ok => { if(ok){ syncFromCloudOnce().then(()=> startCloudListeners()); } });
 }
 
 function onLocalChange(){
