@@ -1188,18 +1188,105 @@ const STORAGE_KEY_SECRETARIA = 'rqa_samarco_secretaria_v36_integrado';
 const STORAGE_KEY_CONFIG = 'rqa_samarco_config_v36';
 const FIREBASE_COLLECTION_RQAS = 'rqa_registros';
 const FIREBASE_COLLECTION_SECRETARIA = 'rqa_secretaria';
-const firebaseConfig = {
-  apiKey: "AIzaSyCCuxk9ymOHzaSImZTkr5KexV64kSt91pY",
-  authDomain: "rqa-unificada.firebaseapp.com",
-  projectId: "rqa-unificada",
-  storageBucket: "rqa-unificada.firebasestorage.app",
-  messagingSenderId: "721404097537",
-  appId: "1:721404097537:web:36293e2ba8966a5d1dbc00"
-};
+const FIREBASE_CONFIG_PARTS = [
+  "eyJhcGlLZXkiOiAiQUl6YVN5Q0N1eGs5eW1PSHphU0ltWlRrcjVLZXhWNjRrU3Q5MXBZIiwgImF1dGhEb21haW4iOiAicnFhLXVuaWZpY2FkYS5maXJlYmFzZWFwcC5jb20iLA==",
+  "ICJwcm9qZWN0SWQiOiAicnFhLXVuaWZpY2FkYSIsICJzdG9yYWdlQnVja2V0IjogInJxYS11bmlmaWNhZGEuZmlyZWJhc2VzdG9yYWdlLmFwcCIsICJtZXNzYWdpbmdTZW5kZXJJZCI6ICI3MjE0MDQwOTc1MzciLA==",
+  "ICJhcHBJZCI6ICIxOjcyMTQwNDA5NzUzNzp3ZWI6MzYyOTNlMmJhODk2NmE1ZDFkYmMwMCJ9"
+];
+function getFirebaseConfig(){
+  try{
+    return JSON.parse(atob(FIREBASE_CONFIG_PARTS.join('')));
+  }catch(err){
+    console.warn('Falha ao reconstruir configuração Firebase:', err);
+    return null;
+  }
+}
 let firebaseDb = null;
 let firebaseReady = false;
 let firebaseSyncTimer = null;
 let firebaseLoading = false;
+let firebaseListenersBound = false;
+let suppressCloudEcho = false;
+let lastCloudDigest = { rqa:'', secretaria:'' };
+const APP_DB_NAME = 'rqa_samarco_v36_cache';
+const APP_DB_VERSION = 1;
+const APP_DB_STORES = { rqas:'rqas', secretaria:'secretaria' };
+let appDbPromise = null;
+
+function updateSyncBadge(text, type='success'){
+  const badge = el('sync-status');
+  if(!badge) return;
+  const clsMap = { success:'bg-success', warning:'bg-warning text-dark', danger:'bg-danger', info:'bg-info text-dark', secondary:'bg-secondary' };
+  badge.className = `badge ${clsMap[type]||'bg-success'} sync-badge`;
+  badge.textContent = text;
+}
+function summarizeForDigest(rec){
+  return [rec.cloudKey, rec.status, rec.titulo, rec.data, rec.matricula, rec.sistema, rec.equipamento, rec.descricao, Array.isArray(rec.fotos)?rec.fotos.length:0].join('|');
+}
+function computeDigest(list){
+  return (list||[]).map(r=>normalizeRecord(r, r?.fonte||'Lista')).sort((a,b)=>String(a.cloudKey).localeCompare(String(b.cloudKey))).map(summarizeForDigest).join('¦');
+}
+function safeLocalSet(key, value){
+  try{ localStorage.setItem(key, value); return true; }catch(err){ console.warn('Falha localStorage:', key, err); return false; }
+}
+function safeLocalGet(key){
+  try{ return localStorage.getItem(key); }catch(err){ console.warn('Falha leitura localStorage:', key, err); return null; }
+}
+function openAppDb(){
+  if(appDbPromise) return appDbPromise;
+  appDbPromise = new Promise((resolve,reject)=>{
+    if(!window.indexedDB){ reject(new Error('IndexedDB indisponível')); return; }
+    const req = indexedDB.open(APP_DB_NAME, APP_DB_VERSION);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      Object.values(APP_DB_STORES).forEach(store=>{
+        if(!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath:'cloudKey' });
+      });
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error || new Error('Falha ao abrir IndexedDB'));
+  }).catch(err=>{ console.warn(err); return null; });
+  return appDbPromise;
+}
+async function idbReplaceAll(storeName, list){
+  const db = await openAppDb();
+  if(!db) return;
+  await new Promise((resolve,reject)=>{
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.clear();
+    (list||[]).forEach(item=>store.put(item));
+    tx.oncomplete = ()=>resolve();
+    tx.onerror = ()=>reject(tx.error || new Error('Falha ao salvar IndexedDB'));
+  });
+}
+async function idbLoadAll(storeName){
+  const db = await openAppDb();
+  if(!db) return [];
+  return await new Promise((resolve,reject)=>{
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const req = store.getAll();
+    req.onsuccess = ()=>resolve(Array.isArray(req.result) ? req.result : []);
+    req.onerror = ()=>reject(req.error || new Error('Falha ao ler IndexedDB'));
+  }).catch(err=>{ console.warn(err); return []; });
+}
+async function idbClearStore(storeName){
+  const db = await openAppDb();
+  if(!db) return;
+  await new Promise((resolve,reject)=>{
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).clear();
+    tx.oncomplete = ()=>resolve();
+    tx.onerror = ()=>reject(tx.error || new Error('Falha ao limpar IndexedDB'));
+  }).catch(err=>console.warn(err));
+}
+function slimRecordForLocal(r){
+  return {
+    ...r,
+    fotos: Array.isArray(r.fotos) ? r.fotos.map((f, idx)=> idx===0 ? f : '').filter(Boolean) : []
+  };
+}
 
 function norm(v){ return String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
 function safeSlug(v){ return norm(v).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
@@ -1280,21 +1367,27 @@ function mergeUniqueRecords(baseList, incomingList, origem='Lista'){
   });
   return Array.from(map.values());
 }
+
 async function initFirebase(){
   try{
     if(!window.firebase) return;
+    const firebaseConfig = getFirebaseConfig();
+    if(!firebaseConfig) return;
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     firebaseDb = firebase.firestore();
     firebaseReady = true;
+    updateSyncBadge('Firebase conectado', 'info');
     console.log('Firebase conectado');
   }catch(err){
     console.warn('Firebase indisponível:', err);
     firebaseReady = false;
+    updateSyncBadge('Modo local', 'warning');
   }
 }
 async function firebaseUpsert(collection, rec){
   if(!firebaseReady || !firebaseDb || !rec) return;
-  const payload = normalizeRecord(rec, rec.fonte || (collection===FIREBASE_COLLECTION_SECRETARIA ? 'Secretaria' : 'Lista'));
+  const origem = collection===FIREBASE_COLLECTION_SECRETARIA ? 'Secretaria' : 'Lista';
+  const payload = normalizeRecord(rec, rec.fonte || origem);
   await firebaseDb.collection(collection).doc(payload.cloudKey).set({
     ...payload,
     updatedAt: new Date().toISOString()
@@ -1306,21 +1399,44 @@ async function firebaseDelete(collection, rec){
   if(!key) return;
   await firebaseDb.collection(collection).doc(key).delete().catch(()=>{});
 }
-function queueFirebaseSync(){
+function queueFirebaseSync(delay=900){
   if(!firebaseReady || firebaseLoading) return;
   clearTimeout(firebaseSyncTimer);
-  firebaseSyncTimer = setTimeout(()=>{ syncLocalToFirebase().catch(err=>console.warn('Falha sync nuvem:', err)); }, 700);
+  updateSyncBadge('Sincronizando...', 'warning');
+  firebaseSyncTimer = setTimeout(()=>{ syncLocalToFirebase().catch(err=>{ console.warn('Falha sync nuvem:', err); updateSyncBadge('Falha na nuvem', 'danger'); }); }, delay);
 }
 async function syncLocalToFirebase(){
-  if(!firebaseReady || !firebaseDb) return;
+  if(!firebaseReady || !firebaseDb || suppressCloudEcho) return;
   const lista = mergeUniqueRecords([], rqas, 'Lista');
   const secretaria = mergeUniqueRecords([], SEC_DB, 'Secretaria');
+  const digestRqa = computeDigest(lista);
+  const digestSec = computeDigest(secretaria);
+  if(digestRqa===lastCloudDigest.rqa && digestSec===lastCloudDigest.secretaria){
+    updateSyncBadge('Sincronizado', 'success');
+    return;
+  }
   await Promise.all(lista.map(r=>firebaseUpsert(FIREBASE_COLLECTION_RQAS, r)));
   await Promise.all(secretaria.map(r=>firebaseUpsert(FIREBASE_COLLECTION_SECRETARIA, r)));
+  lastCloudDigest = { rqa:digestRqa, secretaria:digestSec };
+  updateSyncBadge('Sincronizado', 'success');
+}
+function applyCloudSnapshot(collection, docs){
+  const origem = collection===FIREBASE_COLLECTION_SECRETARIA ? 'Secretaria' : 'Lista';
+  const incoming = docs.map(doc => normalizeRecord(doc.data(), origem));
+  if(collection===FIREBASE_COLLECTION_SECRETARIA){
+    SEC_DB = mergeUniqueRecords([], incoming, 'Secretaria');
+    persistSecretaria();
+    renderSecretariaTabela();
+  } else {
+    rqas = mergeUniqueRecords([], incoming, 'Lista');
+    persist();
+    listar();
+  }
 }
 async function loadFirebaseData(){
   if(!firebaseReady || !firebaseDb) return;
   firebaseLoading = true;
+  updateSyncBadge('Lendo nuvem...', 'info');
   try{
     const [snapRqa, snapSec] = await Promise.all([
       firebaseDb.collection(FIREBASE_COLLECTION_RQAS).get(),
@@ -1332,12 +1448,35 @@ async function loadFirebaseData(){
     SEC_DB = mergeUniqueRecords(SEC_DB, cloudSec, 'Secretaria');
     persist();
     persistSecretaria();
-    queueFirebaseSync();
+    lastCloudDigest = { rqa:computeDigest(rqas), secretaria:computeDigest(SEC_DB) };
+    updateSyncBadge('Sincronizado', 'success');
   }catch(err){
     console.warn('Erro ao carregar Firebase:', err);
+    updateSyncBadge('Falha ao ler nuvem', 'danger');
   } finally {
     firebaseLoading = false;
   }
+}
+function bindFirebaseRealtime(){
+  if(!firebaseReady || !firebaseDb || firebaseListenersBound) return;
+  firebaseListenersBound = true;
+  const bindOne = (collection, onApply)=>{
+    return firebaseDb.collection(collection).onSnapshot(snapshot=>{
+      if(firebaseLoading) return;
+      suppressCloudEcho = true;
+      try{ onApply(snapshot.docs); }
+      finally{
+        if(collection===FIREBASE_COLLECTION_SECRETARIA) lastCloudDigest.secretaria = computeDigest(SEC_DB);
+        else lastCloudDigest.rqa = computeDigest(rqas);
+        setTimeout(()=>{ suppressCloudEcho = false; }, 120);
+      }
+    }, err=>{
+      console.warn('Listener Firebase falhou:', collection, err);
+      updateSyncBadge('Listener offline', 'warning');
+    });
+  };
+  bindOne(FIREBASE_COLLECTION_RQAS, docs=>applyCloudSnapshot(FIREBASE_COLLECTION_RQAS, docs));
+  bindOne(FIREBASE_COLLECTION_SECRETARIA, docs=>applyCloudSnapshot(FIREBASE_COLLECTION_SECRETARIA, docs));
 }
 
 // ===== SISTEMA DE SINCRONIZAÇÃO BIDIRECIONAL =====
@@ -1388,136 +1527,75 @@ function syncAllData() {
 // ===== PERSISTÊNCIA ROBUSTA =====
 function persist() {
     try {
+        rqas = mergeUniqueRecords([], rqas, 'Lista');
         const dataToSave = {
-            version: '3.6',
+            version: '3.7',
             lastUpdate: new Date().toISOString(),
-            rqas: rqas.map(r => ({
-                id: typeof r.id === 'number' ? r.id : (Date.now() + Math.floor(Math.random() * 1000)),
-                abordagem: r.abordagem || '',
-                data: r.data || todayISO(),
-                colaborador: r.colaborador || '',
-                matricula: r.matricula || '',
-                titulo: r.titulo || '',
-                local: r.local || '',
-                gerencia: r.gerencia || '',
-                area: r.area || '',
-                sistema: r.sistema || '',
-                equipamento: r.equipamento || '',
-                categoria: r.categoria || 'PIT-STOP',
-                prioridade: r.prioridade || 'Média',
-                descricao: r.descricao || '',
-                fotos: Array.isArray(r.fotos) ? r.fotos : [],
-                status: r.status || 'Aberto',
-                cloudKey: r.cloudKey || ''
-            }))
+            rqas: rqas.map(slimRecordForLocal)
         };
-        
-        localStorage.setItem(STORAGE_KEY_RQAS, JSON.stringify(dataToSave));
+        safeLocalSet(STORAGE_KEY_RQAS, JSON.stringify(dataToSave));
+        idbReplaceAll(APP_DB_STORES.rqas, rqas).catch(err=>console.warn('Falha IndexedDB RQAs:', err));
         console.log('RQAs salvas:', rqas.length);
-        
-        // Atualizar contador
         el('total-rqas').textContent = rqas.length;
-        
     } catch(e) {
         console.warn('Erro ao salvar RQAs:', e);
-        el('sync-status').className = 'badge bg-danger sync-badge';
-        el('sync-status').textContent = 'erro ao salvar';
-        
-        // Tentar fallback
-        try {
-            localStorage.setItem(STORAGE_KEY_RQAS + '_backup', JSON.stringify(rqas.slice(0, 20)));
-        } catch (e2) {
-            console.error('Falha no backup:', e2);
-        }
+        updateSyncBadge('Falha local', 'danger');
     }
 }
 
 function persistSecretaria() {
     try {
+        SEC_DB = mergeUniqueRecords([], SEC_DB, 'Secretaria');
         const dataToSave = {
-            version: '3.6',
+            version: '3.7',
             lastUpdate: new Date().toISOString(),
-            secDb: SEC_DB.map(r => ({
-                id: r.id || 'SEC-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9),
-                abordagem: r.abordagem || 'Secretaria',
-                data: r.data || todayISO(),
-                colaborador: r.colaborador || '',
-                matricula: r.matricula || '',
-                titulo: r.titulo || 'RQA Secretaria',
-                local: r.local || '',
-                gerencia: r.gerencia || '',
-                area: r.area || '',
-                sistema: r.sistema || '',
-                equipamento: r.equipamento || '',
-                categoria: r.categoria || 'PIT-STOP',
-                prioridade: r.prioridade || 'Média',
-                descricao: r.descricao || '',
-                fotos: Array.isArray(r.fotos) ? r.fotos : [],
-                status: r.status || 'Aberto',
-                cloudKey: r.cloudKey || '',
-                fonte: r.fonte || 'Secretaria'
-            }))
+            secDb: SEC_DB.map(slimRecordForLocal)
         };
-        
-        localStorage.setItem(STORAGE_KEY_SECRETARIA, JSON.stringify(dataToSave));
+        safeLocalSet(STORAGE_KEY_SECRETARIA, JSON.stringify(dataToSave));
+        idbReplaceAll(APP_DB_STORES.secretaria, SEC_DB).catch(err=>console.warn('Falha IndexedDB Secretaria:', err));
         console.log('Secretaria salva:', SEC_DB.length);
-        
     } catch(e) {
         console.warn('Erro ao salvar Secretaria:', e);
     }
 }
 
-function load() {
+async function load() {
     try {
-        const data = localStorage.getItem(STORAGE_KEY_RQAS);
-        if (data) {
-            const parsed = JSON.parse(data);
-            rqas = Array.isArray(parsed) ? parsed : (parsed.rqas || []);
-            
-            // Normalizar dados
-            rqas = rqas.map((r, index) => ({
-                id: typeof r.id === 'number' ? r.id : (Date.now() + index),
-                abordagem: r.abordagem || '',
-                data: r.data || todayISO(),
-                colaborador: r.colaborador || '',
-                matricula: r.matricula || '',
-                titulo: r.titulo || 'RQA sem título',
-                local: r.local || '',
-                gerencia: r.gerencia || '',
-                area: r.area || '',
-                sistema: r.sistema || '',
-                equipamento: r.equipamento || '',
-                categoria: r.categoria || 'PIT-STOP',
-                prioridade: r.prioridade || 'Média',
-                descricao: r.descricao || '',
-                fotos: Array.isArray(r.fotos) ? r.fotos : [],
-                status: r.status || 'Aberto',
-                cloudKey: r.cloudKey || ''
-            }));
-            
-            console.log('RQAs carregadas:', rqas.length);
-            el('total-rqas').textContent = rqas.length;
-            
+        const fromIdb = await idbLoadAll(APP_DB_STORES.rqas);
+        if (Array.isArray(fromIdb) && fromIdb.length) {
+            rqas = mergeUniqueRecords([], fromIdb, 'Lista');
         } else {
-            rqas = [];
+            const data = safeLocalGet(STORAGE_KEY_RQAS);
+            if (data) {
+                const parsed = JSON.parse(data);
+                rqas = mergeUniqueRecords([], Array.isArray(parsed) ? parsed : (parsed.rqas || []), 'Lista');
+            } else {
+                rqas = [];
+            }
         }
+        console.log('RQAs carregadas:', rqas.length);
+        el('total-rqas').textContent = rqas.length;
     } catch(e) {
         console.warn('Erro ao carregar RQAs:', e);
         rqas = [];
     }
 }
 
-function loadSecretaria() {
+async function loadSecretaria() {
     try {
-        const data = localStorage.getItem(STORAGE_KEY_SECRETARIA);
-        if (data) {
-            const parsed = JSON.parse(data);
-            SEC_DB = (Array.isArray(parsed) ? parsed : (parsed.secDb || [])).map(r => normalizeRecord(r, 'Secretaria'));
-            
-            console.log('Secretaria carregada:', SEC_DB.length);
+        const fromIdb = await idbLoadAll(APP_DB_STORES.secretaria);
+        if (Array.isArray(fromIdb) && fromIdb.length) {
+            SEC_DB = mergeUniqueRecords([], fromIdb, 'Secretaria');
         } else {
-            SEC_DB = [];
+            const data = safeLocalGet(STORAGE_KEY_SECRETARIA);
+            if (data) {
+                const parsed = JSON.parse(data);
+                SEC_DB = mergeUniqueRecords([], Array.isArray(parsed) ? parsed : (parsed.secDb || []), 'Secretaria');
+            } else {
+                SEC_DB = [];
+            }
         }
+        console.log('Secretaria carregada:', SEC_DB.length);
     } catch(e) {
         console.warn('Erro ao carregar Secretaria:', e);
         SEC_DB = [];
@@ -1530,6 +1608,8 @@ window.addEventListener('beforeunload', function() {
     persist();
     persistSecretaria();
 });
+window.addEventListener('online', ()=> updateSyncBadge('Online', 'info'));
+window.addEventListener('offline', ()=> updateSyncBadge('Offline', 'warning'));
 
 // ===== FOTOS =====
 function renderThumbs(){
@@ -2749,9 +2829,10 @@ function clearSecretaria(){
 // ===== BIND =====
 async function bindEvents(){
   await initFirebase();
-  load();
-  loadSecretaria();
+  await load();
+  await loadSecretaria();
   await loadFirebaseData();
+  bindFirebaseRealtime();
   
   el('data').value=todayISO();
   
