@@ -3102,62 +3102,18 @@ function toggleAbordagem(){
 
 document.addEventListener('DOMContentLoaded', bindEvents);
 </script>
-  <!-- SENSOR NAZA PORTAL v2 -->
+ <!-- SENSOR NAZA PORTAL - RQA -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script>
-(function() {
-    const SISTEMA_ID = 'rqa';
-    const FIREBASE_URL = 'https://firestore.googleapis.com/v1/projects/naza-auditoria-hub/databases/(default)/documents/sensores/' + SISTEMA_ID;
-    
-    function coletarDados() {
-        const texto = document.body.innerText;
-        const numeros = texto.match(/\d+\.?\d*/g) || [];
-        let valores = numeros.slice(0, 3).map(n => parseFloat(n));
-        
-        if (valores.length < 3) {
-            const checks = document.querySelectorAll('.check, .item').length;
-            const conforme = document.querySelectorAll('.ok, .conforme, .success').length;
-            const naoConforme = document.querySelectorAll('.nok, .error, .fail').length;
-            valores = [
-                Math.min(100, (conforme / Math.max(1, checks)) * 100) || 89,  // % conformidade
-                Math.min(100, (naoConforme / Math.max(1, checks)) * 100) || 34,  // % não conforme
-                Math.min(100, (conforme / Math.max(1, checks)) * 90) || 67   // % resolução
-            ];
-        }
-        
-        return valores;
-    }
-    
-    function enviar() {
-        const valores = coletarDados();
-        fetch(FIREBASE_URL, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                fields: {
-                    sistema: { stringValue: SISTEMA_ID },
-                    valores: { arrayValue: { values: valores.map(v => ({ doubleValue: v })) } },
-                    timestamp: { timestampValue: new Date().toISOString() }
-                }
-            })
-        }).then(() => console.log('✅ Sensor RQA:', valores))
-        .catch(() => {});
-        
-        fetch('https://firestore.googleapis.com/v1/projects/naza-auditoria-hub/databases/(default)/documents/sensor_logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                fields: {
-                    sistema: { stringValue: SISTEMA_ID },
-                    valores: { arrayValue: { values: valores.map(v => ({ doubleValue: v })) } },
-                    timestamp: { timestampValue: new Date().toISOString() }
-                }
-            })
-        }).catch(() => {});
-    }
-    
-    setInterval(enviar, 30000);
-    enviar();
-    console.log('🩷 Sensor RQA ativo');
+(function(){
+  const firebaseConfig={apiKey:"AIzaSyDneReMjO78JqJ-LvmSTiQqUMkxT97H6JE",authDomain:"naza-auditoria-hub.firebaseapp.com",databaseURL:"https://naza-auditoria-hub-default-rtdb.firebaseio.com",projectId:"naza-auditoria-hub"};
+  const app=firebase.apps.length?firebase.app():firebase.initializeApp(firebaseConfig);
+  const db=app.database(); const SISTEMA_ID='rqa';
+  const num=(id)=>{const el=document.getElementById(id); if(!el) return 0; const m=(el.textContent||'').replace(/\./g,'').replace(',','.').match(/-?\d+(?:\.\d+)?/); return m?Number(m[0]):0;};
+  function coletar(){ const total=num('sec-stat-total'), abertas=num('sec-stat-aberto'), tratadas=num('sec-stat-tratado'), enviadas=num('sec-stat-enviado'); const gauge=total>0?(tratadas/total*100):0; return {sistema:SISTEMA_ID,valores:[gauge,total,abertas],dadosCompletos:{total,abertas,tratadas,enviadas},timestamp:Date.now()}; }
+  function enviar(){const payload=coletar(); db.ref('sensores/'+SISTEMA_ID).set(payload).then(()=>console.log('🟢 Sensor RQA ativo',payload));}
+  setTimeout(enviar,4000); setInterval(enviar,30000);
 })();
 </script>
 </body>
