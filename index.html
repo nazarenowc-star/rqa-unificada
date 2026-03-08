@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{ 
     --sam-blue:#013B7B; 
@@ -3103,17 +3104,68 @@ function toggleAbordagem(){
 document.addEventListener('DOMContentLoaded', bindEvents);
 </script>
  <!-- SENSOR NAZA PORTAL - RQA -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script>
 (function(){
-  const firebaseConfig={apiKey:"AIzaSyDneReMjO78JqJ-LvmSTiQqUMkxT97H6JE",authDomain:"naza-auditoria-hub.firebaseapp.com",databaseURL:"https://naza-auditoria-hub-default-rtdb.firebaseio.com",projectId:"naza-auditoria-hub"};
-  const app=firebase.apps.length?firebase.app():firebase.initializeApp(firebaseConfig);
-  const db=app.database(); const SISTEMA_ID='rqa';
-  const num=(id)=>{const el=document.getElementById(id); if(!el) return 0; const m=(el.textContent||'').replace(/\./g,'').replace(',','.').match(/-?\d+(?:\.\d+)?/); return m?Number(m[0]):0;};
-  function coletar(){ const total=num('sec-stat-total'), abertas=num('sec-stat-aberto'), tratadas=num('sec-stat-tratado'), enviadas=num('sec-stat-enviado'); const gauge=total>0?(tratadas/total*100):0; return {sistema:SISTEMA_ID,valores:[gauge,total,abertas],dadosCompletos:{total,abertas,tratadas,enviadas},timestamp:Date.now()}; }
-  function enviar(){const payload=coletar(); db.ref('sensores/'+SISTEMA_ID).set(payload).then(()=>console.log('🟢 Sensor RQA ativo',payload));}
-  setTimeout(enviar,4000); setInterval(enviar,30000);
+  const sensorFirebaseConfig = {
+    apiKey:"AIzaSyDneReMjO78JqJ-LvmSTiQqUMkxT97H6JE",
+    authDomain:"naza-auditoria-hub.firebaseapp.com",
+    databaseURL:"https://naza-auditoria-hub-default-rtdb.firebaseio.com",
+    projectId:"naza-auditoria-hub"
+  };
+
+  const SENSOR_APP_NAME = 'sensorPortalRqa';
+  let sensorApp = null;
+
+  try {
+    sensorApp = firebase.apps.find(app => app.name === SENSOR_APP_NAME) || firebase.initializeApp(sensorFirebaseConfig, SENSOR_APP_NAME);
+  } catch (e) {
+    console.error('❌ Falha ao iniciar app do sensor RQA:', e);
+    return;
+  }
+
+  let db = null;
+  try {
+    db = sensorApp.database();
+  } catch (e) {
+    console.error('❌ Falha ao conectar Realtime Database do sensor RQA:', e);
+    return;
+  }
+
+  const SISTEMA_ID='rqa';
+
+  const num = (id) => {
+    const node = document.getElementById(id);
+    if(!node) return 0;
+    const raw = (node.textContent || '').replace(/\./g,'').replace(',','.');
+    const m = raw.match(/-?\d+(?:\.\d+)?/);
+    return m ? Number(m[0]) : 0;
+  };
+
+  function coletar(){
+    const total = num('sec-stat-total');
+    const abertas = num('sec-stat-aberto');
+    const tratadas = num('sec-stat-tratado');
+    const enviadas = num('sec-stat-enviado');
+    const gauge = total > 0 ? (tratadas / total * 100) : 0;
+
+    return {
+      sistema: SISTEMA_ID,
+      valores: [Number(gauge.toFixed(1)), total, abertas],
+      dadosCompletos: { total, abertas, tratadas, enviadas },
+      timestamp: Date.now()
+    };
+  }
+
+  function enviar(){
+    const payload = coletar();
+    db.ref('sensores/' + SISTEMA_ID)
+      .set(payload)
+      .then(() => console.log('🟢 Sensor RQA ativo', payload))
+      .catch((err) => console.error('❌ Erro ao enviar sensor RQA:', err));
+  }
+
+  setTimeout(enviar, 4000);
+  setInterval(enviar, 30000);
 })();
 </script>
 </body>
