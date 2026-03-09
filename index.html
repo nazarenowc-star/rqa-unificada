@@ -1253,6 +1253,33 @@ function setSyncBadge(text, type='secondary'){
     badge.textContent = text;
 }
 
+// ===== FUNÇÃO RENDER SECRETARIA SIMPLES (ADICIONADA) =====
+function renderSecretariaSimples(data) {
+  const container = document.getElementById('secretaria-tabela');
+  if (!container) return;
+  
+  if (!data || !data.itens || data.itens.length === 0) {
+    container.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Nenhum registro no endpoint.</td></tr>';
+    return;
+  }
+  
+  container.innerHTML = '';
+  data.itens.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.data || '-'}</td>
+      <td>${r.titulo || '-'}</td>
+      <td>${r.local || '-'}</td>
+      <td>${r.gerencia || '-'}</td>
+      <td>${r.colaborador || '-'}</td>
+      <td>${r.matricula || '-'}</td>
+      <td>${(r.abordagem || '-') + ' / ' + (r.sistema || '-')}</td>
+      <td>${r.equipamento || '-'}</td>
+      <td>${r.status || '-'}</td>`;
+    container.appendChild(tr);
+  });
+}
+
 // ===== ESTADO =====
 let rqas=[]; 
 let anexosTemp=[]; 
@@ -1305,9 +1332,9 @@ async function saveSecretariaToCloud(rec, options={}){ const { force=false } = o
 async function deleteRqaFromCloud(id){ if(!firebaseReady || !firebaseDb || cloudSyncInProgress) return; try{ await firebaseDb.collection(CLOUD_COLLECTION_RQAS).doc(safeCloudId('RQA', id)).delete(); }catch(err){ console.error('Erro ao excluir RQA na nuvem:', err); } }
 async function deleteSecretariaFromCloud(id){ if(!firebaseReady || !firebaseDb || cloudSyncInProgress) return; try{ await firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).doc(safeCloudId('SEC', id)).delete(); }catch(err){ console.error('Erro ao excluir Secretaria na nuvem:', err); } }
 async function pushAllLocalToCloud(options={}){ const { force=false } = options; const ok = await initFirebaseCloud(); if(!ok || !firebaseDb) return false; if(cloudSyncInProgress && !force) return false; updateCloudStatus('Enviando dados para nuvem...', 'warning'); for(const item of rqas){ await saveRqaToCloud(item, { force:true }); } for(const item of SEC_DB){ await saveSecretariaToCloud(item, { force:true }); } updateCloudStatus('Dados enviados para nuvem', 'success'); return true; }
-async function syncFromCloudOnce(){ if(!firebaseReady || !firebaseDb) return false; cloudSyncInProgress = true; try{ updateCloudStatus('Lendo nuvem...', 'warning'); const [rqasSnap, secSnap] = await Promise.all([ firebaseDb.collection(CLOUD_COLLECTION_RQAS).get(), firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).get() ]); const cloudRqas = rqasSnap.docs.map(doc => ({ ...doc.data(), id: (doc.data() || {}).id ?? doc.id.replace(/^RQA_/, '') })).filter(Boolean); const cloudSec = secSnap.docs.map(doc => ({ ...doc.data(), id: (doc.data() || {}).id ?? doc.id.replace(/^SEC_/, '') })).filter(Boolean); const hadLocalRqas = rqas.length > 0; const hadLocalSec = SEC_DB.length > 0; rqas = mergeById(rqas, cloudRqas, normalizeRqaItem); SEC_DB = mergeById(SEC_DB, cloudSec, normalizeSecItem); syncAllData(); persist(); persistSecretaria(); listar(); renderSecretariaTabela(); renderSecretariaSimples(); if(!cloudRqas.length && hadLocalRqas){ for(const item of rqas){ await saveRqaToCloud(item, { force:true }); } } if(!cloudSec.length && hadLocalSec){ for(const item of SEC_DB){ await saveSecretariaToCloud(item, { force:true }); } } updateCloudStatus('Nuvem sincronizada', 'success'); return true; }catch(err){ console.error('Erro ao sincronizar nuvem:', err); updateCloudStatus('Erro ao ler nuvem', 'danger'); return false; }finally{ cloudSyncInProgress = false; } }
+async function syncFromCloudOnce(){ if(!firebaseReady || !firebaseDb) return false; cloudSyncInProgress = true; try{ updateCloudStatus('Lendo nuvem...', 'warning'); const [rqasSnap, secSnap] = await Promise.all([ firebaseDb.collection(CLOUD_COLLECTION_RQAS).get(), firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).get() ]); const cloudRqas = rqasSnap.docs.map(doc => ({ ...doc.data(), id: (doc.data() || {}).id ?? doc.id.replace(/^RQA_/, '') })).filter(Boolean); const cloudSec = secSnap.docs.map(doc => ({ ...doc.data(), id: (doc.data() || {}).id ?? doc.id.replace(/^SEC_/, '') })).filter(Boolean); const hadLocalRqas = rqas.length > 0; const hadLocalSec = SEC_DB.length > 0; rqas = mergeById(rqas, cloudRqas, normalizeRqaItem); SEC_DB = mergeById(SEC_DB, cloudSec, normalizeSecItem); syncAllData(); persist(); persistSecretaria(); listar(); renderSecretariaTabela(); renderSecretariaSimples({itens: []}); if(!cloudRqas.length && hadLocalRqas){ for(const item of rqas){ await saveRqaToCloud(item, { force:true }); } } if(!cloudSec.length && hadLocalSec){ for(const item of SEC_DB){ await saveSecretariaToCloud(item, { force:true }); } } updateCloudStatus('Nuvem sincronizada', 'success'); return true; }catch(err){ console.error('Erro ao sincronizar nuvem:', err); updateCloudStatus('Erro ao ler nuvem', 'danger'); return false; }finally{ cloudSyncInProgress = false; } }
 function applyCloudSnapshotToRqas(snapshot){ cloudSyncInProgress = true; try{ let changed = false; snapshot.forEach((doc) => { const data = doc.data() || {}; const rec = normalizeRqaItem({ ...data, id: data.id ?? doc.id.replace(/^RQA_/, '') }); const idx = rqas.findIndex(x => String(x.id) === String(rec.id)); if(idx === -1){ rqas.push(rec); changed = true; } else if(JSON.stringify(rqas[idx]) !== JSON.stringify({ ...rqas[idx], ...rec })){ rqas[idx] = { ...rqas[idx], ...rec }; changed = true; } }); if(changed){ syncAllData(); persist(); listar(); el('total-rqas').textContent = rqas.length; } updateCloudStatus('RQA em tempo real ativa', 'success'); } finally { cloudSyncInProgress = false; } }
-function applyCloudSnapshotToSecretaria(snapshot){ cloudSyncInProgress = true; try{ let changed = false; snapshot.forEach((doc) => { const data = doc.data() || {}; const rec = normalizeSecItem({ ...data, id: data.id ?? doc.id.replace(/^SEC_/, '') }); const idx = SEC_DB.findIndex(x => String(x.id) === String(rec.id)); if(idx === -1){ SEC_DB.push(rec); changed = true; } else if(JSON.stringify(SEC_DB[idx]) !== JSON.stringify({ ...SEC_DB[idx], ...rec })){ SEC_DB[idx] = { ...SEC_DB[idx], ...rec }; changed = true; } }); if(changed){ syncAllData(); persistSecretaria(); renderSecretariaTabela(); renderSecretariaSimples(); } updateCloudStatus('Secretaria em tempo real ativa', 'success'); } finally { cloudSyncInProgress = false; } }
+function applyCloudSnapshotToSecretaria(snapshot){ cloudSyncInProgress = true; try{ let changed = false; snapshot.forEach((doc) => { const data = doc.data() || {}; const rec = normalizeSecItem({ ...data, id: data.id ?? doc.id.replace(/^SEC_/, '') }); const idx = SEC_DB.findIndex(x => String(x.id) === String(rec.id)); if(idx === -1){ SEC_DB.push(rec); changed = true; } else if(JSON.stringify(SEC_DB[idx]) !== JSON.stringify({ ...SEC_DB[idx], ...rec })){ SEC_DB[idx] = { ...SEC_DB[idx], ...rec }; changed = true; } }); if(changed){ syncAllData(); persistSecretaria(); renderSecretariaTabela(); renderSecretariaSimples({itens: []}); } updateCloudStatus('Secretaria em tempo real ativa', 'success'); } finally { cloudSyncInProgress = false; } }
 function startCloudListeners(){ if(!firebaseReady || !firebaseDb) return; if(cloudUnsubRqas){ try{ cloudUnsubRqas(); }catch(e){} } if(cloudUnsubSecretaria){ try{ cloudUnsubSecretaria(); }catch(e){} } cloudUnsubRqas = firebaseDb.collection(CLOUD_COLLECTION_RQAS).onSnapshot((snapshot)=>{ applyCloudSnapshotToRqas(snapshot); }, err => { console.error('Falha na escuta RQAs:', err); updateCloudStatus('Falha na escuta RQAs', 'danger'); }); cloudUnsubSecretaria = firebaseDb.collection(CLOUD_COLLECTION_SECRETARIA).onSnapshot((snapshot)=>{ applyCloudSnapshotToSecretaria(snapshot); }, err => { console.error('Falha na escuta Secretaria:', err); updateCloudStatus('Falha na escuta Secretaria', 'danger'); }); }
 async function syncCloudNow(){ const ok = await initFirebaseCloud(); if(!ok) return; await syncFromCloudOnce(); await pushAllLocalToCloud({ force:true }); startCloudListeners(); showToast('Sincronização com Firebase concluída.'); }
 async function clearCloudCollection(collectionName){ const ok = await initFirebaseCloud(); if(!ok) return; updateCloudStatus('Limpando nuvem...', 'warning'); const snap = await firebaseDb.collection(collectionName).get(); if(snap.empty){ updateCloudStatus('Nuvem já está limpa', 'secondary'); return; } let batch = firebaseDb.batch(); let ops = 0; for(const doc of snap.docs){ batch.delete(doc.ref); ops++; if(ops % 400 === 0){ await batch.commit(); batch = firebaseDb.batch(); } } if(ops % 400 !== 0){ await batch.commit(); } updateCloudStatus('Nuvem limpa com sucesso', 'success'); }
@@ -2646,22 +2673,7 @@ async function secretariaFetch(){
     if(!res.ok) throw new Error('HTTP '+res.status);
     const data = await res.json();
     const itens = Array.isArray(data)? data : (data.itens||[]);
-    const tb=el('secretaria-tabela'); tb.innerHTML='';
-    if(!itens.length){ tb.innerHTML='<tr><td colspan="9" class="text-center py-4 text-muted">Nenhum registro no endpoint.</td></tr>'; return; }
-    for(const r of itens){
-      const tr=document.createElement('tr');
-      tr.innerHTML=`
-        <td>${r.data||'-'}</td>
-        <td>${r.titulo||'-'}</td>
-        <td>${r.local||'-'}</td>
-        <td>${r.gerencia||'-'}</td>
-        <td>${r.colaborador||'-'}</td>
-        <td>${r.matricula||'-'}</td>
-        <td>${(r.abordagem||'-') + ' / ' + (r.sistema||'-')}</td>
-        <td>${r.equipamento||'-'}</td>
-        <td>${r.status||'-'}</td>`;
-      el('secretaria-tabela').appendChild(tr);
-    }
+    renderSecretariaSimples({itens});
   }catch(e){ console.error(e); showToast('Falha ao ler o endpoint GET.'); }
 }
 function secretariaBind(){
